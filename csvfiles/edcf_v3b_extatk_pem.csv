@@ -1,0 +1,11 @@
+# EDCF-Shield PEM+HMAC  scenario=v3b
+# key_mode=EXTERNAL_ATK(atk_has_key=0)
+# CYCLE=this cycle window; CUMULATIVE=all cycles
+# atk_count rows appear in order as you run each count
+# External atk TN>0 FN=0=HMAC detects; Stolen TN=0 FN>0=HMAC blind
+atk_count,atk_pct,cycle,row_type,t,TP,TN,FP,FN,Accuracy,MCC,FPR,F1,Precision,Recall,hmac_checks,hmac_detected,det_rate,fake_pkts,wrong_fm,cascade,topo_err,atk_rate,legit_total,legit_drop,PDR_pct,wifi_flood,wifi_legit,ch_load_pct
+# --- atk_count=1  atk_pct=11.1%  nodes=9  key=EXTERNAL  scenario=v3b ---
+1,11.1,1,CYCLE,4.50,21,0,0,9,0.700000,0.000000,0.000000,0.823529,1.000000,0.700000,30,0,0.0000,0,0,0,9,2.000,21,0,100.00,0,5,0.0000
+1,11.1,1,CUMULATIVE,4.50,21,0,0,9,0.700000,0.000000,0.000000,0.823529,1.000000,0.700000,30,0,0.0000,0,0,0,9,2.000,21,0,100.00,0,5,0.0000
+1,11.1,2,CYCLE,8.50,21,0,0,9,0.700000,0.000000,0.000000,0.823529,1.000000,0.700000,30,0,0.0000,0,0,0,9,1.059,21,0,100.00,0,5,0.0000
+1,11.1,2,CUMULATIVE,8.50,42,0,0,18,0.700000,0.000000,0.000000,0.823529,1.000000,0.700000,60,0,0.0000,0,0,0,18,2.118,42,0,100.00,0,10,0.0000
