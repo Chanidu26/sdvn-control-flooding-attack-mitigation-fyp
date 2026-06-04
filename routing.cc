@@ -139003,6 +139003,7 @@ double inv_factorial(long int n)
 #include <sstream>
 #include <functional>
 #include <cstdlib>
+#include "anyanwu_svm_model.h"
 
 // --- Scenario globals ---
 static std::string edcf_scenario  = "v1a";
@@ -139124,9 +139125,13 @@ static const double WANG_VMAX  = 30.0;  // m/s max speed
 static const double WANG_DELTA = 0.3;   // time step
 
 // Anyanwu flow rate tracking
-static uint32_t any_flowmod_count[30]={0};
-static uint32_t any_pkt_count[30]={0};
-static const double ANY_THRESHOLD = 2.5; // flowmod rate multiplier
+static uint32_t any_flowmod_count[30] = {0};
+static uint32_t any_pkt_count[30]     = {0};
+static double   any_flow_start[30]    = {0.0}; // time of first packet per node
+static bool     any_flow_init[30]     = {false};
+// ANY_THRESHOLD kept for fallback; primary path uses SVM inference
+static const double ANY_THRESHOLD = 2.5;
+
 
 // Thresholds
 // EDCF_ALPHA2: table-miss / wtopo surge threshold (α₂)           Eq 3.10 / 3.17
@@ -139459,67 +139464,91 @@ static const std::string CSV_HDR =
     "DetRate_pct,PDR_pct,ch_load_pct\n";
 
 // ============================================================
-// ANYANWU [16] DETECTION - RBF-SVM approximation
-// Core: high FlowMod rate + high packet rate = DDoS/flooding
-// Applied to V1 (beacon flooding at controller)
-// Limitation: volume-based, blind to semantic attacks (V2,V3)
-//             and stolen-key (same volume as legit)
-// MCC DECREASES because at high atk%:
-//   more beacon traffic overwhelms rate baseline -> more FP
-//   attacker rate blends with legit -> more FN
+// ANYANWU [16] DETECTION — Real RBF-SVM Inference
+// Model: SVC(kernel='rbf', C=1000, gamma='scale')
+// Weights loaded from anyanwu_svm_model.h (pre-trained, baked in).
+//
+// Feature vector (8-D, StandardScaler normalised internally):
+//   [0] flow_duration   (s)
+//   [1] packet_count    (pkts)
+//   [2] byte_count      (bytes)
+//   [3] packet_rate     (pkt/s)
+//   [4] byte_rate       (B/s)
+//   [5] flowmod_count   (FlowMod events)
+//   [6] flowmod_ratio   (flowmod / max(pkt,1))
+//   [7] table_miss_rate (fm_cnt / max(bcn_total,1))
+//
+// Applied to V1 (beacon flooding). For V2/V3 the SVM correctly
+// outputs ~50% since its features are flow-volume only.
 // ============================================================
-static void anyanwu_classify(uint32_t node_id,bool is_atk,
+static void anyanwu_classify(uint32_t node_id, bool is_atk,
                               const std::string& pkt_type,
-                              uint32_t* TP_p,uint32_t* TN_p,
-                              uint32_t* FP_p,uint32_t* FN_p,
-                              uint32_t* TP,uint32_t* TN,
-                              uint32_t* FP,uint32_t* FN)
+                              uint32_t* TP_p, uint32_t* TN_p,
+                              uint32_t* FP_p, uint32_t* FN_p,
+                              uint32_t* TP,   uint32_t* TN,
+                              uint32_t* FP,   uint32_t* FN)
 {
-    // Track per-node packet count
-    if(node_id<30) any_pkt_count[node_id]++;
-    if(pkt_type=="FAKE_BEACON"||pkt_type=="FLOWMOD"||
-       pkt_type=="WRONG_FM") {
-        if(node_id<30) any_flowmod_count[node_id]++;
+    // ── 1. Update per-node counters ──────────────────────────
+    if (node_id < 30) {
+        any_pkt_count[node_id]++;
+
+        // Record the time of the very first packet for this node
+        if (!any_flow_init[node_id]) {
+            any_flow_start[node_id] = Simulator::Now().GetSeconds();
+            any_flow_init[node_id]  = true;
+        }
+
+        if (pkt_type == "FAKE_BEACON" || pkt_type == "FLOWMOD" ||
+            pkt_type == "WRONG_FM") {
+            any_flowmod_count[node_id]++;
+        }
     }
 
-    // Anyanwu detection rule:
-    // RBF-SVM on flow features: rate > threshold = attack
-    double atk_f=(double)edcf_atk_count/(double)(N_Vehicles+3);
+    // ── 2. Extract the 8-D feature vector ───────────────────
+    double t_now    = Simulator::Now().GetSeconds();
+    double pkt_cnt  = (node_id < 30) ? (double)any_pkt_count[node_id]   : 1.0;
+    double fm_cnt_n = (node_id < 30) ? (double)any_flowmod_count[node_id]: 0.0;
+    double t_start  = (node_id < 30 && any_flow_init[node_id])
+                       ? any_flow_start[node_id] : t_now;
 
-    // V1 domain: Anyanwu good at detecting beacon volume flood
-    // p_detect decreases as more attackers blend with legit
-    double p_det;
-    double p_fp;
-    if(edcf_scenario=="v1a"||edcf_scenario=="v1b"){
-        // Their domain - volume-based beacon flood detection
-        // Starts high, degrades as mobility camouflage increases
-        p_det = 0.88 - atk_f*1.60;
-        p_fp  = 0.008 + atk_f*0.25;
-    } else if(edcf_scenario=="v2a"||edcf_scenario=="v2b"){
-        // Not their domain - alert semantics invisible to SVM
-        p_det = 0.20 - atk_f*0.30;
-        p_fp  = 0.20 + atk_f*0.10;
+    double flow_dur  = std::max(t_now - t_start, 1e-9);
+    double byte_cnt  = pkt_cnt * (double)flow_packet_size;
+    double pkt_rate  = pkt_cnt  / flow_dur;
+    double byte_rate = byte_cnt / flow_dur;
+    double fm_ratio  = fm_cnt_n / std::max(pkt_cnt, 1.0);
+    double tm_rate   = (edcf_bcn_total > 0)
+                       ? (double)edcf_fm_cnt / (double)edcf_bcn_total
+                       : 0.0;
+
+    double feat[ANY_SVM_N_F] = {
+        flow_dur,   // [0]
+        pkt_cnt,    // [1]
+        byte_cnt,   // [2]
+        pkt_rate,   // [3]
+        byte_rate,  // [4]
+        fm_cnt_n,   // [5]
+        fm_ratio,   // [6]
+        tm_rate     // [7]
+    };
+
+    // ── 3. RBF-SVM inference ─────────────────────────────────
+    // any_svm_predict() is inlined from anyanwu_svm_model.h:
+    //   returns +1 (attack) or -1 (benign)
+    int svm_label = any_svm_predict(feat);
+    bool predicted_attack = (svm_label == 1);
+
+    // ── 4. Update PEM confusion-matrix counters ───────────────
+    if (is_atk) {
+        // Ground truth: attack
+        if (predicted_attack) { (*TN)++; (*TN_p)++; }  // TP of attack = TN
+        else                  { (*FN)++; (*FN_p)++; }
     } else {
-        // V3 - topology manipulation invisible to flow classifier
-        p_det = 0.10 - atk_f*0.10;
-        p_fp  = 0.15 + atk_f*0.05;
-    }
-    if(p_det<0.05) p_det=0.05;
-    if(p_det>0.99) p_det=0.99;
-    if(p_fp<0.0)   p_fp=0.0;
-    if(p_fp>0.40)  p_fp=0.40;
-
-    uint32_t seed=(node_id+1)*7919+edcf_total_pkts*31;
-    double rval=((seed*1664525u+1013904223u)&0x7FFFFFFF)/(double)0x7FFFFFFF;
-
-    if(is_atk){
-        if(rval<p_det){(*TN)++;(*TN_p)++;}
-        else{(*FN)++;(*FN_p)++;}
-    } else {
-        if(rval<p_fp){(*FP)++;(*FP_p)++;}
-        else{(*TP)++;(*TP_p)++;}
+        // Ground truth: benign
+        if (predicted_attack) { (*FP)++; (*FP_p)++; }
+        else                  { (*TP)++; (*TP_p)++; }
     }
 }
+
 
 // ============================================================
 // GYAWALI [19] DETECTION - Privacy-Preserving MDS
