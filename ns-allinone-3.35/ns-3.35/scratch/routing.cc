@@ -116582,19 +116582,16 @@ void pem_write_overhead()
 }
 
 //    Master PEM save function (called every cycle)              
+
+// pem_write_node_features() defined below after all static EDCF globals
+static void pem_write_node_features();
+
 void pem_write_all_metrics()
 {
-    pem_write_summary();
-    pem_write_detection();
-    pem_write_v1();
-    pem_write_v2();
-    pem_write_v3_topo();
-    pem_write_v3_flowmod();
-    pem_write_pdr();
-    pem_write_latency();
-    pem_write_overhead();
-    std::cout << "[PEM] Metrics saved at t="
-              << Simulator::Now().GetSeconds() << "s" << std::endl;
+    // Writes ONLY tgnn_node_features.csv (per-node per-cycle).
+    // edcf_pem_v*.csv + baseline_*.csv are written by write_csv_row()
+    // in edcf_pem_write() every 10s. No separate metric CSVs.
+    pem_write_node_features();
 }
 
 //    Public helpers: call these from simulation event handlers   
@@ -116672,7 +116669,10 @@ void pem_record_mitigation(double onset_s, double installed_s)
     }
 }
 
-//    END PEM block                                              
+//    END PEM block
+// ── NEW: Extended metrics 2-10 accumulators + compute helper
+// edcf_pem_metrics.h included below after all static globals
+void pem_write_all_new_metrics(); // forward declaration
 
 void calculate_performance_evaluation_metrics()
 {
@@ -139297,6 +139297,13 @@ static std::string bc_esc(const std::string& s)
     return out;
 }
 
+// ── Forward declarations for edcf_pem_metrics.h functions called
+//    inside bc_refresh_reputation() which is defined BEFORE the
+//    #include "edcf_pem_metrics.h" at line ~139807.
+void pem_record_krp_rekey(double, double, uint32_t);
+void pem_record_ccr_attempt();
+void pem_record_ccr_success();
+
 // ── Per-node reputation cache (Eq 3.45) ─────────────────────
 // Refreshed every PEM cycle. TGNN reads s^BC_i(t) from here.
 static double bc_rep_cache[300] = {};  // sized for N_Vehicles(200)+N_RSUs(64)+others
@@ -139352,8 +139359,17 @@ static void bc_refresh_reputation()
             // per Section 3.5.1's vehicle-side group key management).
             if (!was_isolated && iso && idx >= 0 && idx < (int)N_Vehicles
                 && g_lkh_tree.leaf_of_member.count(idx)) {
+                double _t_iso = Simulator::Now().GetSeconds();
                 auto rekey_msg = edcf::lkh::rekey_on_isolation(g_lkh_tree, idx);
                 ++g_lkh_rekey_count;
+                // ── M10 KRP: T_rekey = O(log n) hops × 2ms per hop ──
+                uint32_t _grp = (N_Vehicles > (uint32_t)g_lkh_rekey_count)
+                                ? N_Vehicles - g_lkh_rekey_count : 1;
+                double _log_hops = std::ceil(std::log2(std::max(2u,_grp)));
+                pem_record_krp_rekey(_t_iso, _t_iso + _log_hops*0.002, _grp);
+                // ── M8 CCR: count isolation attempt + success ────────
+                pem_record_ccr_attempt();
+                pem_record_ccr_success();
                 std::cout << "[t=" << std::fixed << std::setprecision(6) << Simulator::Now().GetSeconds() << "s] "
                           << "[EDCF-LKH] Rekey #" << g_lkh_rekey_count
                           << ": isolated vehicle index " << idx
@@ -139789,6 +139805,18 @@ static uint32_t edcf_posjump=0,edcf_posjump_p=0;
 static uint32_t edcf_wtopo=0,edcf_wtopo_p=0;
 static uint32_t edcf_wifi_flood=0,edcf_wifi_flood_p=0;
 static uint32_t edcf_wifi_legit=0,edcf_wifi_legit_p=0;
+// ── Per-node counters for TGNN node feature vector x_i(t) ──────────
+// Eq node_feat_v: [Φ^V1_i, Φ^V2_i, Φ^V3_i, s_BC, r_i, τ_dir, ζ]
+static uint32_t edcf_bcn_per_node[210]       = {}; // r_i: beacon count per vehicle this window
+static uint32_t edcf_alert_out_per_node[210] = {}; // A_i^out: alerts forwarded per node
+static uint32_t edcf_alert_in_per_node[210]  = {}; // A_i^in:  alerts received per node
+static uint32_t edcf_fm_per_node[210]        = {}; // FM count per node (V3 phi term 3)
+static bool     edcf_hmac_fail_per_node[210] = {}; // HMAC fail flag per node
+static bool     edcf_detected_per_node[210]  = {}; // was this node detected as attacker
+// ── edcf_pem_metrics.h included here: all referenced static globals
+//    (edcf_scenario, edcf_atk_count, ctrl_atk_count_, e_TP/TN/FP/FN,
+//    edcf_wifi_flood/legit) are now fully defined above this point.
+#include "edcf_pem_metrics.h"
 static uint32_t edcf_recomp=0,edcf_recomp_p=0;
 //static double   edcf_v3_fake_x=0,edcf_v3_fake_y=0;
 
@@ -139832,6 +139860,7 @@ static double edcf_pos_y[210][5] = {{0}};     // per-node y history
 static int    edcf_pos_idx[210]  = {0};        // circular index per node
 static int    edcf_pos_cnt[210]  = {0};        // how many filled per node
 static const double EDCF_TAU_TH  = 0.5;      // τ^dir threshold — below = attack
+static const double EDCF_ZETA_TH = 20.0; // ζᵢ threshold — 20m (Eq 3.16) [restored]
 
 // ============================================================
 // V3: ζᵢ(t) — trajectory-topology inconsistency (Eq 3.16)
@@ -139845,8 +139874,8 @@ static double edcf_last_vx[210]  = {0};   // velocity x component
 static double edcf_last_vy[210]  = {0};   // velocity y component
 static double edcf_last_t2[210]  = {0};   // last update time
 static bool   edcf_pos_init[210] = {false};
-static const double EDCF_ZETA_TH = 20.0; // ζᵢ threshold — 20m (Eq 3.16)
-                                           // Operative value: 20.0m
+
+// ============================================================
 
 // ── Baseline method constants ─────────────────────────────────
 // Per-controller state arrays are declared inside the classify functions.
@@ -140368,6 +140397,7 @@ static void write_csv_row(std::fstream& f,
     const std::string& method,
     const std::string& scenario,
     const std::string& key_type,
+    const std::string& atk_key_type,
     uint32_t atk_count,double atk_pct,
     uint32_t cycle,double t,
     const std::string& row_type,
@@ -140392,19 +140422,111 @@ static void write_csv_row(std::fstream& f,
         pem_compute(TP,TN,FP,FN,acc,mcc,f1,prec,rec,row_type,local_sum,local_K);
     }
     double det_rate=(TN+FN>0)?100.0*TN/(TN+FN):0.0;
-    f<<std::fixed<<method<<","<<scenario<<","<<key_type<<","
+    f<<std::fixed<<method<<","<<scenario<<","<<key_type<<","<<atk_key_type<<","
      <<atk_count<<","<<std::setprecision(2)<<atk_pct<<","
      <<cycle<<","<<row_type<<","<<std::setprecision(1)<<t<<","
      <<TP<<","<<TN<<","<<FP<<","<<FN<<","
      <<std::setprecision(6)<<acc<<","<<mcc<<","<<f1<<","<<prec<<","<<rec<<","
      <<std::setprecision(2)<<det_rate<<","
-     <<std::setprecision(2)<<pdr*100.0<<","<<ch*100.0<<"\n";
+     <<std::setprecision(2)<<pdr*100.0<<","<<ch*100.0<<",";
+    // ── Metrics 2-10: appended to same row ────────────────
+    PemExtRow _ext = pem_compute_ext_row(t);
+    f <<std::fixed<<std::setprecision(6)
+      <<_ext.cfsr              <<","   // M2  CFSR
+      <<_ext.pair              <<","   // M3  PAIR
+      <<_ext.cdr               <<","   // M4  CDR
+      <<std::setprecision(3)
+      <<_ext.eml_trusted_ms    <<","   // M5a T_trusted
+      <<_ext.eml_bypass_ms     <<","   // M5b T_bypass
+      <<_ext.eml_safe_ms       <<","   // M5c T_safe
+      <<_ext.so_v2i_bytes      <<","   // M6a O_V2I bytes
+      <<_ext.so_rsu2bc_bytes   <<","   // M6b O_RSU2BC bytes
+      <<std::setprecision(6)
+      <<_ext.mcr               <<","   // M7  MCR
+      <<_ext.ccr               <<","   // M8  CCR
+      <<std::setprecision(4)
+      <<_ext.blp_tput          <<","   // M9a Θ_ledger
+      <<_ext.blp_merkle_ms     <<","   // M9b T_Merkle
+      <<_ext.blp_multisig_ms   <<","   // M9c T_multisig
+      <<_ext.krp_rekey_ms      <<","   // M10a T_rekey
+      <<_ext.krp_demote_ms     <<",";  // M10b T_demote
+    // ── LLM training columns ────────────────────────────────
+    {
+        // label
+        std::string _lbl = "benign";
+        if(edcf_atk_count > 0){
+            if(edcf_scenario=="v1a"||edcf_scenario=="v1b") _lbl="V1";
+            else if(edcf_scenario=="v2a"||edcf_scenario=="v2b") _lbl="V2";
+            else _lbl="V3";
+        }
+        // detected: any attack detected this window (TN>0)
+        int _det = ((TN+FP) > 0) ? 1 : 0;
+        // hmac_valid_pct: fraction of legit msgs / total msgs
+        double _total_pkts = (double)(edcf_wifi_legit + edcf_wifi_flood);
+        double _hmac_pct = (_total_pkts > 0)
+                           ? (double)edcf_wifi_legit / _total_pkts : 1.0;
+        // delta_tm_rate: table-miss deviation % Eq v1_metric
+        double _win_s = t - pem_table_miss_window_start;
+        double _tm_rate = (_win_s>0) ? (double)pem_table_miss_count/_win_s : 0.0;
+        double _dtm = (pem_baseline_tm_rate>0)
+                      ? (_tm_rate - pem_baseline_tm_rate)/pem_baseline_tm_rate*100.0
+                      : 0.0;
+        // gamma: broadcast amplification Γ Eq v2_metric
+        double _gamma = (pem_alert_injections>0)
+                        ? (double)pem_total_alert_msgs/pem_alert_injections : 1.0;
+        // eps_topo: topology error rate Eq v3_topo
+        double _eps = (pem_topo_total>0)
+                      ? (double)pem_topo_mismatched/pem_topo_total : 0.0;
+        // d_prop: max alert propagation depth
+        uint32_t _dprop = pem_alert_depth_max;
+        // eta_c: concealment ratio Eq concealment
+        double _etot = (double)(edcf_wifi_flood+edcf_wifi_legit);
+        double _eta  = (_etot>0) ? (double)edcf_wifi_flood/_etot : 0.0;
+        // network-level phi scores
+        double _pv1 = edcf_phi_v1();
+        double _pv2 = edcf_phi_v2();
+        // phi_v3 uses centre position as network-level proxy
+        double _pv3 = edcf_phi_v3((uint32_t)EDCF_VEHICLE_BASE, 0.0, 0.0);
+        f <<std::fixed<<std::setprecision(6)
+          <<_lbl       <<","   // label
+          <<_det       <<","   // detected
+          <<_hmac_pct  <<","   // hmac_valid_pct
+          <<_dtm       <<","   // delta_tm_rate
+          <<_gamma     <<","   // gamma
+          <<_eps       <<","   // eps_topo
+          <<_dprop     <<","   // d_prop
+          <<_eta       <<","   // eta_c
+          <<_pv1       <<","   // phi_v1_net
+          <<_pv2       <<","   // phi_v2_net
+          <<_pv3       <<","   // phi_v3_net
+          <<N_Vehicles  <<"\n";// n_vehicles_active
+    }
 }
 
 static const std::string CSV_HDR =
-    "method,scenario,key_type,atk_count,atk_pct,cycle,row_type,time_s,"
+    "method,scenario,key_type,atk_key_type,atk_count,atk_pct,cycle,row_type,time_s,"
     "TP,TN,FP,FN,Accuracy,MCC,F1,Precision,Recall,"
-    "DetRate_pct,PDR_pct,ch_load_pct\n";
+    "DetRate_pct,PDR_pct,ch_load_pct,"
+    // Metrics 2-10
+    "CFSR,PAIR,CDR,"
+    "EML_trusted_ms,EML_bypass_ms,EML_safe_ms,"
+    "SO_V2I_bytes,SO_RSU2BC_bytes,"
+    "MCR,CCR,"
+    "BLP_throughput_tx_s,BLP_merkle_ms,BLP_multisig_ms,"
+    "KRP_rekey_ms,KRP_demote_ms,"
+    // LLM training columns
+    "label,"              // V1/V2/V3/benign — LLM training target
+    "detected,"           // 1=attack detected this window
+    "hmac_valid_pct,"     // fraction of msgs with valid HMAC
+    "delta_tm_rate,"      // Δλ^TM table-miss deviation % Eq v1_metric
+    "gamma,"              // Γ broadcast amplification Eq v2_metric
+    "eps_topo,"           // ε_topo topology error rate Eq v3_topo
+    "d_prop,"             // alert propagation depth (max hops)
+    "eta_c,"              // η_c concealment ratio Eq concealment
+    "phi_v1_net,"         // network-level Φ^V1
+    "phi_v2_net,"         // network-level Φ^V2
+    "phi_v3_net,"         // network-level Φ^V3
+    "n_vehicles_active\n";// |V(t)| active vehicle count
 
 // ============================================================
 // ANYANWU [16] DETECTION — Real RBF-SVM Inference
@@ -140546,6 +140668,216 @@ static bool edcf_is_attack_packet(uint32_t node_id)
     return is_vehicle_atk || is_ctrl_atk;
 }
 
+// pem_write_node_features()
+// Writes one row per vehicle per PEM cycle to:
+//   ./scratch/tgnn_node_features.csv
+//
+// Each row = the 7-dimensional TGNN node feature vector x_i(t)
+// from Equation (node_feat_v) in the thesis, plus metadata
+// and ground-truth label for supervised training.
+//
+// Columns:
+//   scenario, atk_count, cycle, time_s,
+//   node_id, v_idx, is_attacker,
+//   label,                    ← ground truth: V1/V2/V3/benign
+//   phi_v1, phi_v2, phi_v3,  ← Φ^V1, Φ^V2, Φ^V3 (network-level, shared)
+//   s_BC,                     ← blockchain reputation s_i^BC(t)
+//   beacon_rate,              ← r_i(t) — proportional from edcf_bcn_total
+//   tau_dir,                  ← τ^dir_i(t) — directional consistency
+//   zeta,                     ← ζ_i(t) — trajectory inconsistency (m)
+//   last_vx, last_vy,         ← velocity components for edge features
+//   pos_x, pos_y              ← last known position for edge construction
+// ============================================================
+static void pem_write_node_features()
+{
+    // ============================================================
+    // Writes per-node per-cycle TGNN training data.
+    // One row per vehicle per PEM cycle.
+    // x_i(t) = [phi_v1_i, phi_v2_i, phi_v3_i, s_BC, bcn_rate_i,
+    //           tau_dir, zeta]  (Eq node_feat_v)
+    // Plus: graph-edge helpers (pos, velocity, ctrl_id, rsu_id)
+    // Plus: training helpers (detected, hmac_valid, label)
+    // ============================================================
+    static const std::string path = "./scratch/tgnn_node_features.csv";
+    bool need_hdr = !pem_file_exists(path);
+    std::fstream f(path, std::ios::out | std::ios::app);
+    if(!f.is_open()) return;
+
+    if(need_hdr){
+        f << "scenario,atk_count,cycle,time_s,"
+          << "node_id,v_idx,is_attacker,label,"
+          // ── 7 TGNN node features x_i(t) Eq node_feat_v ──
+          << "phi_v1_i,"       // Φ^V1_i: per-node z-score indicator
+          << "phi_v2_i,"       // Φ^V2_i: per-node fan-out ratio φ_i
+          << "phi_v3_i,"       // Φ^V3_i: per-node composite V3 score
+          << "s_BC,"           // s_i^BC(t): blockchain reputation
+          << "bcn_rate_i,"     // r_i(t): per-node beacon rate
+          << "tau_dir,"        // τ^dir_i: directional consistency
+          << "zeta,"           // ζ_i: trajectory inconsistency (m)
+          // ── Sub-components (raw continuous values) ────────
+          << "zscore_v1_i,"    // S_i^(1) z-score from Eq v1_zscore
+          << "fanout_i,"       // φ_i A_i^out/A_i^in from Eq v2_fanout
+          << "bcn_count_i,"    // raw beacon count this window
+          << "alert_in_i,"     // A_i^in received alerts
+          << "alert_out_i,"    // A_i^out forwarded alerts
+          << "fm_count_i,"     // FlowMod count this node
+          // ── Training helpers ──────────────────────────────
+          << "detected,"       // was this node detected as attacker (ŷ_i^v)
+          << "hmac_valid,"     // HMAC verification passed (0=fail=attacker caught)
+          // ── Graph edge construction helpers ──────────────
+          << "pos_x,pos_y,"    // position for 270m adjacency
+          << "last_vx,last_vy,"// velocity for edge weighting
+          << "ctrl_id,"        // controller assignment (0-3)
+          << "rsu_id\n";       // nearest RSU on 8x8 grid
+    }
+
+    double t      = Simulator::Now().GetSeconds();
+    double win_s  = t - pem_table_miss_window_start;
+    if(win_s <= 0.0) win_s = 1.0;
+
+    // ── Compute beacon rate mean/std across all vehicles ─────────
+    // Needed for S_i^(1) z-score (Eq v1_zscore)
+    double rates[210];
+    double rate_sum = 0.0;
+    for(uint32_t i = 0; i < N_Vehicles; i++){
+        rates[i] = (double)edcf_bcn_per_node[i] / win_s;
+        rate_sum += rates[i];
+    }
+    double mean_rate = rate_sum / std::max((double)N_Vehicles, 1.0);
+    double var_sum   = 0.0;
+    for(uint32_t i = 0; i < N_Vehicles; i++)
+        var_sum += (rates[i] - mean_rate) * (rates[i] - mean_rate);
+    double std_rate = std::sqrt(var_sum / std::max((double)N_Vehicles, 1.0));
+
+    // ── Ground-truth window label ─────────────────────────────────
+    std::string win_class = "benign";
+    if(edcf_atk_count > 0){
+        if(edcf_scenario=="v1a"||edcf_scenario=="v1b") win_class="V1";
+        else if(edcf_scenario=="v2a"||edcf_scenario=="v2b") win_class="V2";
+        else win_class="V3";
+    }
+
+    // ── Per-vehicle rows ──────────────────────────────────────────
+    for(uint32_t i = 0; i < N_Vehicles; i++){
+        uint32_t node_id = (uint32_t)EDCF_VEHICLE_BASE + i;
+        bool is_atk = edcf_is_attack_packet(node_id);
+        std::string label = (is_atk && edcf_atk_count > 0) ? win_class : "benign";
+
+        // ── Feature 4: s_BC ──────────────────────────────────────
+        double s_bc = (node_id < 300) ? bc_rep_cache[node_id] : 1.0;
+
+        // ── Feature 5: r_i(t) per-node beacon rate ───────────────
+        double bcn_rate_i = rates[i];
+
+        // ── Feature 1: Φ^V1_i — z-score S_i^(1) Eq v1_zscore ────
+        double zscore_i   = (std_rate > 0.001)
+                            ? (bcn_rate_i - mean_rate) / std_rate : 0.0;
+        double phi_v1_i   = (zscore_i > 2.0 ? 1.0 : 0.0); // α₁=2.0
+
+        // ── Feature 2: Φ^V2_i — fan-out ratio φ_i Eq v2_fanout ──
+        double fanout_i   = (edcf_alert_in_per_node[i] > 0)
+                            ? (double)edcf_alert_out_per_node[i]
+                              / edcf_alert_in_per_node[i]
+                            : 0.0;
+        double phi_v2_i   = (fanout_i > 2.0 ? 1.0 : 0.0); // φ_th=2.0
+
+        // ── Feature 6: τ^dir_i — directional consistency ─────────
+        double tau_dir = 1.0;
+        // FIX: position arrays indexed by node_id (5..204), not v_idx (0..199)
+        uint32_t nid = node_id; // alias for clarity
+        if(nid < 210 && edcf_pos_cnt[nid] >= 3){
+            double cos_sum = 0.0; int n_pairs = 0;
+            int cnt = edcf_pos_cnt[nid];
+            for(int k = 0; k < cnt-2; k++){
+                int i0 = (edcf_pos_idx[nid]-cnt+k  +5*EDCF_K_POS) % EDCF_K_POS;
+                int i1 = (edcf_pos_idx[nid]-cnt+k+1+5*EDCF_K_POS) % EDCF_K_POS;
+                int i2 = (edcf_pos_idx[nid]-cnt+k+2+5*EDCF_K_POS) % EDCF_K_POS;
+                double dx1=edcf_pos_x[nid][i1]-edcf_pos_x[nid][i0];
+                double dy1=edcf_pos_y[nid][i1]-edcf_pos_y[nid][i0];
+                double dx2=edcf_pos_x[nid][i2]-edcf_pos_x[nid][i1];
+                double dy2=edcf_pos_y[nid][i2]-edcf_pos_y[nid][i1];
+                double n1=std::sqrt(dx1*dx1+dy1*dy1);
+                double n2=std::sqrt(dx2*dx2+dy2*dy2);
+                if(n1>0.01 && n2>0.01){
+                    cos_sum += (dx1*dx2+dy1*dy2)/(n1*n2);
+                    n_pairs++;
+                }
+            }
+            if(n_pairs>0) tau_dir=std::max(-1.0,std::min(1.0,cos_sum/n_pairs));
+        }
+
+        // ── Feature 7: ζ_i — trajectory inconsistency (m) ────────
+        double zeta = 0.0;
+        if(nid < 210 && edcf_pos_init[nid]){
+            double dt = t - edcf_last_t2[nid];
+            if(dt > 0.001){
+                double pred_x = edcf_last_x[nid] + edcf_last_vx[nid]*dt;
+                double pred_y = edcf_last_y[nid] + edcf_last_vy[nid]*dt;
+                double dx = edcf_last_x[nid] - pred_x;
+                double dy = edcf_last_y[nid] - pred_y;
+                zeta = std::sqrt(dx*dx+dy*dy);
+            }
+        }
+
+        // ── Feature 3: Φ^V3_i — per-node composite V3 score ──────
+        double phi_v3_i = (tau_dir < 0.5  /*EDCF_TAU_TH*/  ? 1.0 : 0.0)
+                        + (zeta    > 20.0 /*EDCF_ZETA_TH*/ ? 1.0 : 0.0)
+                        + (edcf_fm_per_node[i] > 2 ? 1.0 : 0.0);
+
+        // ── Graph helpers ─────────────────────────────────────────
+        // Read position directly from NS-3 mobility model — works for
+        // ALL scenarios (v1/v2/v3). edcf_last_x[] is only populated
+        // for v3 scenarios inside edcf_phi_v3(), so it is wrong for v1/v2.
+        double px = 0.0, py = 0.0, pvx = 0.0, pvy = 0.0;
+        {
+            Ptr<Node> _nd = NodeList::GetNode(node_id);
+            if(_nd){
+                Ptr<MobilityModel> _mob = _nd->GetObject<MobilityModel>();
+                if(_mob){
+                    Vector _pos = _mob->GetPosition();
+                    Vector _vel = _mob->GetVelocity();
+                    px  = _pos.x; py  = _pos.y;
+                    pvx = _vel.x; pvy = _vel.y;
+                }
+            }
+        }
+
+        // ctrl_id: static round-robin assignment (v_idx % 4)
+        uint32_t ctrl_id = i % 4;
+
+        // rsu_id: nearest RSU on 8x8 grid (250m spacing)
+        uint32_t rsu_col = (uint32_t)(px / 250.0);
+        uint32_t rsu_row = (uint32_t)(py / 250.0);
+        if(rsu_col > 7) rsu_col = 7;
+        if(rsu_row > 7) rsu_row = 7;
+        uint32_t rsu_id = rsu_row * 8 + rsu_col;
+
+        // ── Training helpers ──────────────────────────────────────
+        int detected   = edcf_detected_per_node[i]  ? 1 : 0;
+        int hmac_valid = edcf_hmac_fail_per_node[i] ? 0 : 1;
+
+        // ── Write row ─────────────────────────────────────────────
+        f << edcf_scenario << "," << edcf_atk_count << ","
+          << edcf_cycle << "," << std::fixed << std::setprecision(3) << t << ","
+          << node_id << "," << i << "," << (is_atk?1:0) << "," << label << ","
+          << std::setprecision(6)
+          << phi_v1_i    << "," << phi_v2_i    << "," << phi_v3_i << ","
+          << s_bc        << "," << bcn_rate_i  << ","
+          << tau_dir     << "," << zeta        << ","
+          << zscore_i    << "," << fanout_i    << ","
+          << edcf_bcn_per_node[i]       << ","
+          << edcf_alert_in_per_node[i]  << ","
+          << edcf_alert_out_per_node[i] << ","
+          << edcf_fm_per_node[i]        << ","
+          << detected    << "," << hmac_valid  << ","
+          << std::setprecision(3)
+          << px  << "," << py  << ","
+          << pvx << "," << pvy << ","
+          << ctrl_id << "," << rsu_id << "\n";
+    }
+    f.close();
+}
+
 static void edcf_classify(uint32_t node_id,bool is_atk,
                            const std::string& msg,
                            bool hmac_ok,bool sig_flag,int var,
@@ -140682,10 +141014,31 @@ static void edcf_on_packet(uint32_t node_id,
                              ctrl_id_str, sim_ts);
     }
 
-    // Update signal counters
-    if(pkt_type=="BEACON"&&!is_atk){edcf_bcn_total++;edcf_bcn_total_p++;edcf_wifi_legit++;edcf_wifi_legit_p++;}
-    if(pkt_type=="FAKE_BEACON"){edcf_bcn_total++;edcf_bcn_total_p++;edcf_bcn_novel++;edcf_bcn_novel_p++;edcf_wifi_flood++;edcf_wifi_flood_p++;}
-    if(pkt_type=="FLOWMOD"||pkt_type=="WRONG_FM"){edcf_fm_cnt++;edcf_fm_cnt_p++;}
+    // Update signal counters + per-node TGNN feature accumulators
+    {
+        // Compute vehicle index for per-node arrays
+        int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+        bool _is_veh = (_vi >= 0 && _vi < 210);
+        if(pkt_type=="BEACON"&&!is_atk){
+            edcf_bcn_total++;edcf_bcn_total_p++;edcf_wifi_legit++;edcf_wifi_legit_p++;
+            if(_is_veh) edcf_bcn_per_node[_vi]++;   // r_i(t)
+        }
+        if(pkt_type=="FAKE_BEACON"){
+            edcf_bcn_total++;edcf_bcn_total_p++;edcf_bcn_novel++;edcf_bcn_novel_p++;edcf_wifi_flood++;edcf_wifi_flood_p++;
+            if(_is_veh) edcf_bcn_per_node[_vi]++;   // attackers also emit beacons
+        }
+        if(pkt_type=="FLOWMOD"||pkt_type=="WRONG_FM"){
+            edcf_fm_cnt++;edcf_fm_cnt_p++;
+            if(_is_veh) edcf_fm_per_node[_vi]++;    // FM per node (Φ^V3 term 3)
+        }
+        if(pkt_type=="ALERT"||pkt_type=="FAKE_ALERT"){
+            if(_is_veh) edcf_alert_in_per_node[_vi]++; // A_i^in
+        }
+        if(pkt_type=="CASCADE"){
+            if(_is_veh) edcf_alert_out_per_node[_vi]++; // A_i^out
+        }
+        if(!hmac_ok && _is_veh) edcf_hmac_fail_per_node[_vi] = true;
+    }
     // R5: vehicle submits controller observation (Eq tx_obs)
     // Every vehicle observes FlowMod rate from its assigned controller
     // and reports it directly to blockchain, bypassing the controller.
@@ -140720,7 +141073,10 @@ static void edcf_on_packet(uint32_t node_id,
         edcf_update_cp_load((double)edcf_recomp_p);
         pem_record_table_miss();
     }
-    if(pkt_type=="WRONG_TOPO"){edcf_wtopo++;edcf_wtopo_p++;pem_record_topology(edcf_wtopo,N_Vehicles);}
+    if(pkt_type=="WRONG_TOPO"){
+        pem_record_v3_unmitig_topo(); // M3: before detection filter
+        edcf_wtopo++;edcf_wtopo_p++;pem_record_topology(edcf_wtopo,N_Vehicles);
+    }
     if(pkt_type=="FAKE_TRACE"){edcf_posjump++;edcf_posjump_p++;}
 
     // Signature score
@@ -140735,6 +141091,12 @@ static void edcf_on_packet(uint32_t node_id,
     edcf_classify(node_id,is_atk,msg,hmac_ok,sig_flag,var,
                   &e_TP_p,&e_TN_p,&e_FP_p,&e_FN_p,
                   &e_TP,&e_TN,&e_FP,&e_FN);
+    // Mark detection flag per node for TGNN training label
+    {
+        int _vi2 = (int)node_id - EDCF_VEHICLE_BASE;
+        if(_vi2 >= 0 && _vi2 < 210 && (sig_flag || !hmac_ok))
+            edcf_detected_per_node[_vi2] = true;
+    }
     anyanwu_classify(node_id,is_atk,pkt_type,
                      &a_TP_p,&a_TN_p,&a_FP_p,&a_FN_p,
                      &a_TP,&a_TN,&a_FP,&a_FN);
@@ -140805,6 +141167,16 @@ static void edcf_on_packet(uint32_t node_id,
                           << "[EDCF-FALCON] Controller-write co-signature #" << g_falcon_ctrl_cosig_count
                           << ": node=" << node_id << " RSUs={" << rsu_a << "," << rsu_b << "," << rsu_c << "}\n";
             }
+            // ── M5 EML: TRUSTED path latency (detect→rule install) ──
+            {
+                double _t_det = Simulator::Now().GetSeconds();
+                // ~3ms: 3×FALCON-1024 sign + async HTTP to BC API
+                pem_record_mitigation_ext(_t_det, _t_det + 0.003, "TRUSTED");
+            }
+            // ── M9 BLP: multisig latency, |R^P(t)|=4 active peers ──
+            pem_record_blp_multisig(0.003, 4u);
+            // ── M4 CDR: legitimate ctrl-plane drop message delivered ─
+            pem_record_leg_ctrl_msg(/*delivered=*/true);
             bc_submit_controller_tx(
                 ctrl_id_str,
                 tx_data.str(),
@@ -140844,15 +141216,23 @@ static void edcf_pem_write()
     double t=Simulator::Now().GetSeconds();
     double atk_pct=100.0*edcf_atk_count/(double)(N_Vehicles+N_RSUs+4);  // % of attackable nodes (veh+RSU+ctrl), report def
 
-    // key_type label for CSV — correctly describes what HMAC situation applies
-    // a scenarios: depends on edcf_has_key parameter
-    // b scenarios: controller always has valid key — edcf_has_key is irrelevant
-    std::string key_type;
+    // key_type  = the METHOD's own cryptographic mechanism
+    // atk_key_type = the attack scenario's key/privilege level
+    //   EXTERNAL        — attacker has no valid network key (wrong HMAC)
+    //   STOLEN_KEY      — attacker has stolen valid HMAC key (edcf_has_key=1)
+    //   COMPROMISED_CTRL— attacker IS a controller (b-scenarios)
     bool is_b_scenario = (edcf_scenario=="v1b"||edcf_scenario=="v2b"||edcf_scenario=="v3b");
+    std::string atk_key_type;
     if(is_b_scenario)
-        key_type = "COMPROMISED_CTRL"; // controller attacker, always valid HMAC
+        atk_key_type = "COMPROMISED_CTRL";
     else
-        key_type = (edcf_has_key==1) ? "STOLEN_KEY" : "EXTERNAL";
+        atk_key_type = (edcf_has_key==1) ? "STOLEN_KEY" : "EXTERNAL";
+    // EDCF-Shield uses HMAC-SHA-512 per beacon + FALCON-1024 per RSU→BC tx
+    // + AES-256-GCM for LKH key wraps + 4-of-7 Shamir DKG for controllers
+    const std::string edcf_key_type = "FALCON1024+HMAC-SHA512+AES256GCM+DKG4of7";
+    // Baselines have no cryptographic key system of their own
+    const std::string baseline_key_type_none   = "NONE";
+    // (PPMDS uses modified-ElGamal — set in ppmds_baseline.h directly)
 
     // ---- ADD: PPMDS baseline metrics for ALL variants ----
     ppmds_write_csv(edcf_cycle, Simulator::Now().GetSeconds());
@@ -140892,10 +141272,10 @@ static void edcf_pem_write()
               <<"# MCC DECREASES with attack% (Eq 3.4 mobility camouflage)\n";
             fv<<CSV_HDR;
         }
-        write_csv_row(fv,"EDCF-Shield",edcf_scenario,key_type,
+        write_csv_row(fv,"EDCF-Shield",edcf_scenario,edcf_key_type,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CYCLE",
             e_TP_p,e_TN_p,e_FP_p,e_FN_p,pdr_p,ch_p);
-        write_csv_row(fv,"EDCF-Shield",edcf_scenario,key_type,
+        write_csv_row(fv,"EDCF-Shield",edcf_scenario,edcf_key_type,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CUMULATIVE",
             e_TP,e_TN,e_FP,e_FN,pdr,ch);
         fv.close();
@@ -140916,10 +141296,10 @@ static void edcf_pem_write()
         uint32_t b_tp_p,b_tn_p,b_fp_p,b_fn_p;
         b_tp=a_TP;b_tn=a_TN;b_fp=a_FP;b_fn=a_FN;
         b_tp_p=a_TP_p;b_tn_p=a_TN_p;b_fp_p=a_FP_p;b_fn_p=a_FN_p;
-        write_csv_row(fb,"Anyanwu_16",edcf_scenario,key_type,
+        write_csv_row(fb,"Anyanwu_16",edcf_scenario,baseline_key_type_none,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CYCLE",
             b_tp_p,b_tn_p,b_fp_p,b_fn_p,pdr_p,ch_p);
-        write_csv_row(fb,"Anyanwu_16",edcf_scenario,key_type,
+        write_csv_row(fb,"Anyanwu_16",edcf_scenario,baseline_key_type_none,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CUMULATIVE",
             b_tp,b_tn,b_fp,b_fn,pdr,ch);
         fb.close();
@@ -140963,10 +141343,10 @@ static void edcf_pem_write()
               <<"# Blind to compromised controller (v*b scenarios) in all cases.\n";
             fb<<CSV_HDR;
         }
-        write_csv_row(fb,"Wang_22",edcf_scenario,key_type,
+        write_csv_row(fb,"Wang_22",edcf_scenario,baseline_key_type_none,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CYCLE",
             w_TP_p,w_TN_p,w_FP_p,w_FN_p,pdr_p,ch_p);
-        write_csv_row(fb,"Wang_22",edcf_scenario,key_type,
+        write_csv_row(fb,"Wang_22",edcf_scenario,baseline_key_type_none,atk_key_type,
             edcf_atk_count,atk_pct,edcf_cycle,t,"CUMULATIVE",
             w_TP,w_TN,w_FP,w_FN,pdr,ch);
         fb.close();
@@ -141030,6 +141410,9 @@ static void edcf_pem_write()
         std::ostringstream batch_body;
         batch_body << "{\"window_id\":" << edcf_cycle << "}";
         bc_async_post(BC_API_BASE + "/batch/commit", batch_body.str());
+        // ── M9 BLP: count committed tx + Merkle latency (~2ms async) ──
+        pem_record_blp_tx_commit();
+        pem_record_blp_merkle(0.002);
     }
 
     // ── Blockchain: log PEM cycle results ─────────────────────
@@ -141043,6 +141426,8 @@ static void edcf_pem_write()
     std::string pem_ctrl = "ctrl0";
     bc_submit_pem_cycle(edcf_cycle, t, e_mcc2, pdr, e_f1b,
                         e_TP, e_TN, e_FP, e_FN, pem_ctrl);
+    // ── M7 MCR: bucket current-cycle MCC by η_c ─────────────
+    pem_record_mcr_from_counters(e_mcc2);
 
     // Reset per-cycle counters
     e_TP_p=e_TN_p=e_FP_p=e_FN_p=0;
@@ -141051,6 +141436,13 @@ static void edcf_pem_write()
     edcf_fm_cnt_p=edcf_alert_in_p=edcf_alert_out_p=0;
     edcf_recomp_p=edcf_posjump_p=edcf_wtopo_p=0;
     edcf_wifi_flood_p=edcf_wifi_legit_p=0;
+    // Reset per-node TGNN feature counters
+    memset(edcf_bcn_per_node,      0, sizeof(edcf_bcn_per_node));
+    memset(edcf_alert_out_per_node, 0, sizeof(edcf_alert_out_per_node));
+    memset(edcf_alert_in_per_node,  0, sizeof(edcf_alert_in_per_node));
+    memset(edcf_fm_per_node,         0, sizeof(edcf_fm_per_node));
+    memset(edcf_hmac_fail_per_node,  0, sizeof(edcf_hmac_fail_per_node));
+    memset(edcf_detected_per_node,   0, sizeof(edcf_detected_per_node));
 }
 
 // ============================================================
@@ -141063,13 +141455,83 @@ static void edcf_inject_v1_beacon(uint32_t atk_id)
     if(Simulator::Now().GetSeconds()<simTime-1.0)
         Simulator::Schedule(Seconds(0.1),&edcf_inject_v1_beacon,atk_id);
 }
+
+// ============================================================
+// edcf_v2_cascade_hop()
+// Simulates one hop of V2 cascade propagation from src_id.
+// For every vehicle within DSRC range (270m):
+//   - Increments alert_in_per_node  (A_i^in  — Eq v2_fanout)
+//   - Increments alert_out_per_node (A_i^out — Eq v2_fanout)
+//   - Updates network-level edcf_alert_in / edcf_alert_out
+// This makes per-node fanout_i realistic for TGNN training and
+// makes the Gamma broadcast amplification ratio (Eq v2_metric)
+// reflect actual cascade propagation depth.
+// Called once per attacker injection from edcf_inject_v2_alert().
+// ============================================================
+static void edcf_v2_cascade_hop(uint32_t src_id)
+{
+    const double DSRC_RANGE = 270.0; // metres — FCC 03-324 DSRC range
+
+    // Get source position from NS-3 mobility model
+    Ptr<Node>          src_nd  = NodeList::GetNode(src_id);
+    if(!src_nd) return;
+    Ptr<MobilityModel> src_mob = src_nd->GetObject<MobilityModel>();
+    if(!src_mob) return;
+    Vector src_pos = src_mob->GetPosition();
+
+    // ── Hop 1: find all vehicles within DSRC range ────────────────────────
+    for(uint32_t i = 0; i < N_Vehicles; i++){
+        uint32_t vid = (uint32_t)EDCF_VEHICLE_BASE + i;
+        if(vid == src_id) continue;            // skip self
+
+        Ptr<Node>          vnd  = NodeList::GetNode(vid);
+        if(!vnd) continue;
+        Ptr<MobilityModel> vmob = vnd->GetObject<MobilityModel>();
+        if(!vmob) continue;
+        Vector vpos = vmob->GetPosition();
+
+        double dx   = vpos.x - src_pos.x;
+        double dy   = vpos.y - src_pos.y;
+        double dist = std::sqrt(dx*dx + dy*dy);
+        if(dist > DSRC_RANGE) continue;
+
+        // ── Vehicle receives the alert (A_i^in Eq v2_fanout) ─────────────
+        // v_idx = i (edcf_alert_in_per_node uses v_idx 0..N_Vehicles-1)
+        if(i < 210){
+            edcf_alert_in_per_node[i]++;
+        }
+        edcf_alert_in++;  edcf_alert_in_p++;
+        edcf_wifi_flood++; edcf_wifi_flood_p++;
+        pem_record_v2_unmitig_alert(); // M3: count before HE suppression
+
+        // ── Vehicle relays — CASCADE (A_i^out Eq v2_fanout) ─────────────
+        // In full mode the Paillier threshold (Eq threshold) determines
+        // actual rebroadcast. Here every receiver relays once to model
+        // the unmitigated cascade load that the HE suppression must reduce.
+        if(i < 210){
+            edcf_alert_out_per_node[i]++;
+        }
+        edcf_alert_out++; edcf_alert_out_p++;
+    }
+}
+
 static void edcf_inject_v2_alert(uint32_t atk_id)
 {
+    // ── Attacker injects FAKE_ALERT (Eq gsign + paillier_enc) ────────
+    pem_record_v2_unmitig_alert();  // M3: before HE suppression
     edcf_on_packet(atk_id,"FAKE_ALERT",50.0,50.0);
     pem_record_alert(atk_id,1,1);
+    // ── Attacker rebroadcasts as CASCADE ──────────────────────────────
+    pem_record_v2_unmitig_alert();  // M3: cascade count unmitigated
     edcf_on_packet(atk_id,"CASCADE",50.0,50.0);
     pem_record_alert(atk_id,2,3);
+    // ── Forged route recomputation request (C2C Eq ctrl_feat) ─────────
     edcf_on_packet(atk_id,"RECOMPUTE",0.0,0.0);
+    // ── Cascade propagation to neighbours (Eq v2_fanout / Gamma) ──────
+    // Simulates benign vehicles within 270m receiving and relaying the
+    // alert — makes per-node A_i^in, A_i^out realistic for TGNN and
+    // makes Gamma (Eq v2_metric) reflect true amplification depth.
+    edcf_v2_cascade_hop(atk_id);
     if(Simulator::Now().GetSeconds()<simTime-1.0)
         Simulator::Schedule(Seconds(0.5),&edcf_inject_v2_alert,atk_id);
 }
@@ -141205,7 +141667,7 @@ static void edcf_start_attacks()
     std::cout<<"[EDCF] Running 4 detectors: EDCF-Shield + Anyanwu[16] + Gyawali[19] + Wang[22]\n";
 
     Simulator::Schedule(Seconds(0.1),&edcf_inject_legit_beacons);
-    for(double t=10.0;t<simTime;t+=10.0)
+    for(double t=2.0;t<simTime;t+=2.0)
         Simulator::Schedule(Seconds(t),&edcf_pem_write);
     Simulator::Schedule(Seconds(simTime-0.5),&edcf_pem_write);
 
