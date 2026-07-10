@@ -247,13 +247,26 @@ static void ppmds_write_csv(uint32_t cycle, double t){
           << "# and lifecycle as EDCF-Shield/Anyanwu/Wang's MCC (see ppmds_mcc_sum/_K\n"
           << "# above) -- not a raw single-window value. CUMULATIVE row's MCC is still\n"
           << "# the plain pem_mcc() of the cumulative confusion matrix, as before.\n";
-        f << "method,scenario,key_type,atk_count,atk_pct,cycle,row_type,time_s,"
-             "TP,TN,FP,FN,Accuracy,MCC,F1,Precision,Recall,DetRate_pct,PDR_pct,ch_load_pct\n";
+        f << "method,scenario,key_type,atk_key_type,atk_count,atk_pct,cycle,row_type,time_s,"
+             "TP,TN,FP,FN,Accuracy,MCC,F1,Precision,Recall,DetRate_pct,PDR_pct,ch_load_pct,"
+             // Metrics M2-M10
+             "CFSR,PAIR,CDR,"
+             "EML_trusted_ms,EML_bypass_ms,EML_safe_ms,"
+             "SO_V2I_bytes,SO_RSU2BC_bytes,"
+             "MCR,CCR,"
+             "BLP_throughput_tx_s,BLP_merkle_ms,BLP_multisig_ms,"
+             "KRP_rekey_ms,KRP_demote_ms,"
+             // LLM training columns
+             "label,detected,hmac_valid_pct,"
+             "delta_tm_rate,gamma,eps_topo,d_prop,eta_c,"
+             "phi_v1_net,phi_v2_net,phi_v3_net,n_vehicles_active\n";
         ppmds_hdr=true;
     }
     bool is_b=(edcf_scenario=="v1b"||edcf_scenario=="v2b"||edcf_scenario=="v3b");
-    std::string key_type = is_b ? "COMPROMISED_CTRL"
-                                : ((edcf_has_key==1)?"STOLEN_KEY":"EXTERNAL");
+    // PPMDS uses modified-ElGamal group encryption + PBC pairing
+    const std::string key_type = "MODIFIED_ELGAMAL_PBC";
+    std::string atk_key_type = is_b ? "COMPROMISED_CTRL"
+                                    : ((edcf_has_key==1)?"STOLEN_KEY":"EXTERNAL");
     double atk_pct=100.0*edcf_atk_count/(double)(N_Vehicles+N_RSUs+4); // % of attackable nodes (report def)
 
     // row_type=="CYCLE": apply the same K-window running-average MCC that
@@ -285,13 +298,40 @@ static void ppmds_write_csv(uint32_t cycle, double t){
         if(pdr>1.0) pdr=1.0;
         double ch_load = (edcf_scenario=="v3a"||edcf_scenario=="v3b")?0.0:(1.0-supp/100.0);
         f << std::fixed
-          << "PPMDS_19," << edcf_scenario << "," << key_type << ","
+          << "PPMDS_19," << edcf_scenario << "," << key_type << "," << atk_key_type << ","
           << edcf_atk_count << "," << std::setprecision(2) << atk_pct << ","
           << cycle << "," << rt << "," << std::setprecision(1) << t << ","
           << TP << "," << TN << "," << FP << "," << FN << ","
           << std::setprecision(6) << acc << "," << mcc << "," << f1 << ","
           << prec << "," << rec << "," << std::setprecision(2) << det << ","
-          << std::setprecision(2) << pdr*100.0 << "," << ch_load*100.0 << "\n";
+          << std::setprecision(2) << pdr*100.0 << "," << ch_load*100.0 << ","
+          // ── M2-M10 new metrics ────────────────────────────────────────────
+          << std::setprecision(6)
+          // CFSR: cascade suppression ratio
+          << (ppmds_cascades_total>0?(double)ppmds_cascades_suppressed/ppmds_cascades_total:0.0) << ","
+          << 0.0 << ","   // PAIR
+          << 1.0 << ","   // CDR
+          << 0.0 << "," << 0.0 << "," << 0.0 << ","  // EML trusted/bypass/safe
+          << 0   << "," << 0   << ","                  // SO V2I/RSU2BC bytes
+          << 0.0 << "," << 0.0 << ","                  // MCR, CCR
+          << 0.0 << "," << 0.0 << "," << 0.0 << ","   // BLP throughput/merkle/multisig
+          << 0.0 << "," << 0.0 << ","                  // KRP rekey/demote
+          // ── LLM training columns ─────────────────────────────────────────
+          << ([&]()->std::string{
+               if(edcf_atk_count==0) return std::string("benign");
+               if(edcf_scenario=="v1a"||edcf_scenario=="v1b") return std::string("V1");
+               if(edcf_scenario=="v2a"||edcf_scenario=="v2b") return std::string("V2");
+               return std::string("V3");
+             }()) << ","
+          << (TN>0?1:0) << ","
+          << std::setprecision(4) << (edcf_has_key==1?0.0:1.0) << ","
+          << 0.0 << ","   // delta_tm_rate
+          << (ppmds_cascades_total>0?(double)ppmds_cascades_total/std::max((uint64_t)1,ppmds_cascades_suppressed):1.0) << ","  // gamma
+          << 0.0 << ","   // eps_topo
+          << 0   << ","   // d_prop
+          << (double)edcf_atk_count/(double)(N_Vehicles+N_RSUs+4) << ","  // eta_c
+          << 0.0 << "," << 0.0 << "," << 0.0 << ","  // phi v1/v2/v3 net
+          << N_Vehicles << "\n";
     };
     row("CYCLE",      ppmds_TP_p,ppmds_TN_p,ppmds_FP_p,ppmds_FN_p);
     row("CUMULATIVE", ppmds_TP,  ppmds_TN,  ppmds_FP,  ppmds_FN);
