@@ -1,0 +1,2 @@
+model,rank,val_MCC,test_MCC,F1_macro,Accuracy,acc_benign,acc_V1,acc_V2,acc_V3,train_min,adapter_dir
+Mistral-7B,16,1.0,0.9404,0.9316,0.955,0.6667,1.0,1.0,1.0,215.7,./adapter_stageb_Mistral-7B

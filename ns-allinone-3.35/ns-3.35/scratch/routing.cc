@@ -21,6 +21,7 @@
 // Barcelona city map mobility support — for SUMO trace import
 #include "ns3/ns2-mobility-helper.h"
 #include <vector>
+#include <algorithm>
 #include <cstring>
 #include "ns3/tag.h"
 #include "ns3/vector.h"
@@ -51,6 +52,9 @@
 #include "iostream"
 #include "fstream"
 #include "vector"
+#include <fstream>
+#include <string>
+#include <set>
 #include <cstdlib>
 #include <limits.h>
 #define EDCF_HAVE_FALCON
@@ -212,6 +216,12 @@ static uint32_t g_v2_window_op_count = 0;  // counts individual GSign+Enc operat
 // defined in edcf_crypto.h and simply never called.
 static edcf::lkh::LkhTree g_lkh_tree;
 static int g_lkh_rekey_count = 0;   // evidence counter: how many isolation events triggered rekeying
+
+// AI control-plane mitigation bridge — node IDs (as strings) the Python
+// TGNN+LLM fusion loop has flagged via scratch/blacklist.txt. Populated by
+// edcf_check_ai_blacklist(), consulted by the packet Rx path (HandleReadOne)
+// to silently drop traffic from quarantined nodes.
+std::set<std::string> m_blockedNodes;
 
 static void edcf_lkh_init()
 {
@@ -116588,10 +116598,21 @@ static void pem_write_node_features();
 
 void pem_write_all_metrics()
 {
-    // Writes ONLY tgnn_node_features.csv (per-node per-cycle).
+    // Writes tgnn_node_features.csv (per-node per-cycle).
     // edcf_pem_v*.csv + baseline_*.csv are written by write_csv_row()
-    // in edcf_pem_write() every 10s. No separate metric CSVs.
+    // in edcf_pem_write() every 10s.
     pem_write_node_features();
+
+    // Tier 2 Task V3 (Sir 2026-07-28): pem_write_v3_flowmod() existed but
+    // was never called anywhere -- pem_v3_flowmod.csv was never produced.
+    // Wired in here at the same per-data_transmission_period cadence as
+    // pem_write_node_features(). pem_flowmod_total/pem_flowmod_attack are
+    // maintained for every scenario (pem_record_table_miss() increments
+    // pem_flowmod_total on any table-miss; pem_record_attack_flowmod() only
+    // fires from V3's edcf_inject_v3_trace()), so this is harmless for
+    // v1/v2 runs (flowmod_attack stays 0, accurate ground truth) and gives
+    // V3 runs the requested nonzero per-window FlowMod rate metric.
+    pem_write_v3_flowmod();
 }
 
 //    Public helpers: call these from simulation event handlers   
@@ -119907,13 +119928,80 @@ void MacRx (std::string context, Ptr <const Packet> pkt)
 
 
 
+// AI control-plane mitigation bridge: broadcast packets (V1/V2/V3 flooding
+// traffic, e.g. cascading alert storms) carry one of the CustomDataTag /
+// CustomDataTag1..25 / CustomDataTagmax variants (picked at Tx time based on
+// network-size scaling), not the unicast routing tag. Since Tag has no
+// virtual sender-id accessor, we must probe each concrete type in turn to
+// resolve the broadcaster's node id, whichever one is actually present.
+static bool edcf_get_broadcast_sender_id(Ptr<const Packet> pkt, uint32_t &senderId)
+{
+	CustomDataTag t0; if (pkt->PeekPacketTag(t0)) { senderId = t0.GetNodeId(); return true; }
+	CustomDataTag1 t1; if (pkt->PeekPacketTag(t1)) { senderId = t1.GetNodeId(); return true; }
+	CustomDataTag2 t2; if (pkt->PeekPacketTag(t2)) { senderId = t2.GetNodeId(); return true; }
+	CustomDataTag3 t3; if (pkt->PeekPacketTag(t3)) { senderId = t3.GetNodeId(); return true; }
+	CustomDataTag4 t4; if (pkt->PeekPacketTag(t4)) { senderId = t4.GetNodeId(); return true; }
+	CustomDataTag5 t5; if (pkt->PeekPacketTag(t5)) { senderId = t5.GetNodeId(); return true; }
+	CustomDataTag6 t6; if (pkt->PeekPacketTag(t6)) { senderId = t6.GetNodeId(); return true; }
+	CustomDataTag7 t7; if (pkt->PeekPacketTag(t7)) { senderId = t7.GetNodeId(); return true; }
+	CustomDataTag8 t8; if (pkt->PeekPacketTag(t8)) { senderId = t8.GetNodeId(); return true; }
+	CustomDataTag9 t9; if (pkt->PeekPacketTag(t9)) { senderId = t9.GetNodeId(); return true; }
+	CustomDataTag10 t10; if (pkt->PeekPacketTag(t10)) { senderId = t10.GetNodeId(); return true; }
+	CustomDataTag11 t11; if (pkt->PeekPacketTag(t11)) { senderId = t11.GetNodeId(); return true; }
+	CustomDataTag12 t12; if (pkt->PeekPacketTag(t12)) { senderId = t12.GetNodeId(); return true; }
+	CustomDataTag13 t13; if (pkt->PeekPacketTag(t13)) { senderId = t13.GetNodeId(); return true; }
+	CustomDataTag14 t14; if (pkt->PeekPacketTag(t14)) { senderId = t14.GetNodeId(); return true; }
+	CustomDataTag15 t15; if (pkt->PeekPacketTag(t15)) { senderId = t15.GetNodeId(); return true; }
+	CustomDataTag16 t16; if (pkt->PeekPacketTag(t16)) { senderId = t16.GetNodeId(); return true; }
+	CustomDataTag17 t17; if (pkt->PeekPacketTag(t17)) { senderId = t17.GetNodeId(); return true; }
+	CustomDataTag18 t18; if (pkt->PeekPacketTag(t18)) { senderId = t18.GetNodeId(); return true; }
+	CustomDataTag19 t19; if (pkt->PeekPacketTag(t19)) { senderId = t19.GetNodeId(); return true; }
+	CustomDataTag20 t20; if (pkt->PeekPacketTag(t20)) { senderId = t20.GetNodeId(); return true; }
+	CustomDataTag21 t21; if (pkt->PeekPacketTag(t21)) { senderId = t21.GetNodeId(); return true; }
+	CustomDataTag22 t22; if (pkt->PeekPacketTag(t22)) { senderId = t22.GetNodeId(); return true; }
+	CustomDataTag23 t23; if (pkt->PeekPacketTag(t23)) { senderId = t23.GetNodeId(); return true; }
+	CustomDataTag24 t24; if (pkt->PeekPacketTag(t24)) { senderId = t24.GetNodeId(); return true; }
+	CustomDataTag25 t25; if (pkt->PeekPacketTag(t25)) { senderId = t25.GetNodeId(); return true; }
+	CustomDataTagmax tmax; if (pkt->PeekPacketTag(tmax)) { senderId = tmax.GetNodeId(); return true; }
+	return false;
+}
+
 void Rx (std::string context, Ptr <const Packet> pkt, uint16_t channelFreqMhz,  WifiTxVector txVector,MpduInfo aMpdu, SignalNoiseDbm signalNoise, uint16_t staId)
 {
+	// AI control-plane mitigation bridge: drop broadcast/relay traffic from
+	// any node the fusion loop has quarantined via blacklist.txt, before any
+	// routing/neighbor-table processing below can rebroadcast it. Source id
+	// is resolved from the unicast routing tag if present, otherwise from
+	// whichever broadcast data tag (CustomDataTag family) the packet carries.
+	{
+		uint32_t blockedSenderId;
+		bool haveSenderId = false;
+		CustomDataUnicastTag_Routing rt_tag_probe;
+		if (pkt->PeekPacketTag(rt_tag_probe))
+		{
+			blockedSenderId = rt_tag_probe.GetsenderId();
+			haveSenderId = true;
+		}
+		else if (edcf_get_broadcast_sender_id(pkt, blockedSenderId))
+		{
+			haveSenderId = true;
+		}
+		if (haveSenderId)
+		{
+			std::string sourceId = std::to_string(blockedSenderId);
+			if (m_blockedNodes.find(sourceId) != m_blockedNodes.end())
+			{
+				NS_LOG_UNCOND("Packet from blocked Node " << sourceId << " silently dropped by firewall.");
+				return;
+			}
+		}
+	}
+
 	//context will include info about the source of this event. Use string manipulation if you want to extract info.
 	//std::cout <<  context << std::endl;
 	//cout<<context[10]<<endl;
 	//Print the info.
-	
+
 	/*
 	std::cout << "\t total packet Size=" << pkt->GetSerializedSize()
 			  << " Freq="<<channelFreqMhz
@@ -119921,13 +120009,13 @@ void Rx (std::string context, Ptr <const Packet> pkt, uint16_t channelFreqMhz,  
 			  << " Signal=" << signalNoise.signal
 			  << " Noise=" << signalNoise.noise << std::endl;
 	*/
-	
-	
+
+
 	//int x = int (channelFreqMhz);
 	//int y = int (staId);
 	//std::cout << x << "+" << y << "=" << apb.Func(x, y) << std::endl;
 	//We can also examine the WifiMacHeader
-	
+
 	bool routing_packet_present = false;
 	CustomDataUnicastTag_Routing tag_routing;
 	routing_packet_present = pkt->PeekPacketTag(tag_routing);
@@ -139256,9 +139344,20 @@ static std::string bc_http_post_sync(const std::string& path,
     return body;
 }
 
-// ── POST — synchronous (reliable on WSL2 and HPC) ────────────
-// Simulation waits max 2 seconds per call (timeout in bc_connect).
-// On HPC with fast loopback this is essentially zero overhead.
+// ── POST — genuinely async via fork() ─────────────────────────
+// Previously this called bc_http_post_sync() directly despite being
+// named "async" and documented as fire-and-forget everywhere it's used
+// (bc_submit_vehicle_tx on every packet, bc_submit_detection on every
+// packet, bc_submit_hmac_event, bc_submit_controller_tx) — every one of
+// those calls was a real blocking connect()/send()/recv() round trip to
+// the Go blockchain API, freezing the single-threaded NS-3 event loop
+// for however long that took. With edcf_has_key=1 letting the V2
+// cascade actually propagate (vs. has_key=0, where forged HMACs get
+// rejected at the first hop and the cascade never takes off), packet
+// volume — and therefore blocking round trips — explodes, which is the
+// 30-60 minute stall. bc_start_worker()'s SIGCHLD=SIG_IGN and
+// bc_stop_worker()'s waitpid() sweep already exist specifically to
+// support this; they were just never wired to an actual fork() here.
 static void bc_async_post(const std::string& url,
                            const std::string& json_body)
 {
@@ -139267,8 +139366,15 @@ static void bc_async_post(const std::string& url,
     std::string prefix = "http://localhost:3000";
     std::string path = (url.size() > prefix.size()) ? url.substr(prefix.size()) : "/";
 
-    // Synchronous POST — most reliable across WSL2 and bare Linux
-    bc_http_post_sync(path, json_body);
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child: separate address space, no NS-3 simulator state touched.
+        bc_http_post_sync(path, json_body);
+        _exit(0);
+    }
+    // pid < 0 (fork failed): drop silently — telemetry, never allowed to
+    // stall the simulator. pid > 0: parent (NS-3) continues immediately;
+    // child is auto-reaped since SIGCHLD=SIG_IGN (bc_start_worker()).
 }
 
 // ── No-op stubs (curl worker thread replacement) ─────────────
@@ -139674,6 +139780,111 @@ static uint32_t    edcf_atk_count = 3;
 static int         edcf_bad_ctrl  = 0;
 static int         edcf_has_key   = 0;
 
+// Mode selector M ∈ {0,1} (§3.4.5, Fig 3.6): a single dispatch decision per
+// event routes it down EXACTLY ONE branch — Lightweight (rule-based
+// signature + HMAC, Algorithm 1) OR Full (TGNN+LLM fused AI, Algorithm 4)
+// — never both. Previously both blocks ran unconditionally for every
+// is_atk candidate (a deliberate earlier fix for the AI being otherwise
+// unreachable), which diverges from the report's C_{M=0} << C_{M=1} cost
+// model (that inequality assumes an event pays ONE cost, not both) and
+// from Algorithm 1/4 being alternative procedures, not composed ones.
+// Default 1 (Full/AI mode) to match recent testing; pass
+// --edcf_full_mode=0 to run the Lightweight-only baseline for comparison.
+static uint32_t    edcf_full_mode = 1;
+
+// ── E4 — Attacker Event Novelty Fraction (Eq 4.1/eq:novelty_frac) ──────────
+// rho_novelty(t) = |{e in A(t) : s_e^BC(t) = empty}| / |A(t)| -- fraction of
+// attack events whose source has no blockchain history within the last
+// T_mem seconds. T_mem is the ledger-history lookback window; edcf_rho_novelty
+// is an OPT-IN override for sweeping rho_novelty directly (E4 sweeps it across
+// {0,25,50,75,100}%) -- left at the -1 sentinel by default, so it has ZERO
+// effect on default runs (rho_novelty is simply measured/logged from real
+// blockchain-submission timestamps, not manufactured). Deliberately kept
+// separate from Eq 3.9's rho_new (Phi^V1 Term 2, edcf_bcn_novel_p) -- that is
+// a different, already-fixed detector signal keyed on packet TYPE, not on
+// blockchain-history recency; this does not touch it.
+static double edcf_t_mem       = 5.0;  // T_mem seconds, report E4 default window
+static double edcf_rho_novelty = -1.0; // -1 = disabled (measure only); [0,1] = override
+
+// Task 1.2 (Eq v1_novelty, RSU-zone position novelty) — per-vehicle,
+// per-zone last-seen timestamp. Local C++ tracker: not backed by the Go
+// blockchain ledger, whose Tx_obs/CtrlObsRecord (edcf_api.go) tracks
+// CONTROLLER flow-mod/route-err behavior for controller reputation, not
+// vehicle position history — there is no existing vehicle-position ledger
+// to extend, so this mirrors the same "local per-vehicle history" pattern
+// already used for the (now-superseded) packet-type-tag identity check.
+// Sentinel -1.0 = zone never visited by this vehicle.
+static double edcf_zone_last_seen[210][64];
+static bool   edcf_zone_table_init = false;
+static double edcf_rho_new_zone = 0.0; // current network-level novelty rate (Eq v1_novelty), updated once per PEM cycle
+
+// Tier 2 D2 (Sir 2026-07-28): live network-level IDENTITY/MAC novelty rate,
+// rho_new = fake_mac_count/(fake_mac_count+N_Vehicles). This is the ρ_new
+// Sir's Tier 2 message actually refers to (his worked example
+// "60 attackers x 10 fake MACs / (200+600) = 0.75" matches this formula,
+// not edcf_rho_new_zone above, which is RSU-zone position novelty --  a
+// different signal that only coincidentally read a similar number in the
+// Tier 1 report). Computed once per PEM cycle in pem_write_node_features()
+// from the same expression previously used only for the ext_attack_diag.csv
+// NETWORK row (rho_new_identity_diag); now also published here for
+// edcf_phi_v1()'s live Term 2 to read.
+static double edcf_rho_new_identity = 0.0;
+
+// Tier 2 Bug 1 fix (Sir 2026-07-28): timestamp of the last edcf_bcn_per_node[]
+// reset (edcf_pem_write()'s per-cycle reset block), so edcf_poisson_v1_score()
+// can scale mu to how far into the CURRENT window each packet arrives,
+// instead of comparing a still-accumulating count against the full-window
+// target regardless of timing (the bug that caused every vehicle's first
+// beacon of every window to look anomalously low relative to mu=10).
+static double edcf_v1_window_start_t = 0.0;
+
+// Tier 2 Bug 2 fix (Sir 2026-07-28): Stage 1 network-level Phi^V1(t) --
+// Term1_fraction + rho_new(t) + Term3_fraction, published once per PEM
+// cycle in pem_write_node_features() (same value as the D5 diagnostic's
+// phi_v1_composite_net). This answers "is the NETWORK under V1 attack this
+// window" -- a single flag, not a per-vehicle score. rho_new has no
+// per-vehicle subscript in Eq 3.11 by design (a network-wide identity
+// anomaly signal), so it must never be added into an individual vehicle's
+// classification score again -- that was Bug 2 (every vehicle inherited
+// the same 0.75 network value and cleared Theta^V1=0.30 regardless of its
+// own behaviour). Stage 2 (edcf_v1_stage2_attacker(), per-vehicle
+// attribution) is the only thing that decides which SPECIFIC vehicle is
+// flagged, and only runs when this Stage 1 flag is already true.
+static double edcf_phi_v1_stage1_net = 0.0;
+
+// Category A2 (Sir 2026-07-27 fix): per-vehicle CURRENT RSU zone, for
+// detecting a handover (zone-crossing) event -- distinct from
+// edcf_zone_last_seen[][] above, which is a per-zone "have I ever been
+// here within T_mem" memory, not a "did my zone just change" tracker.
+// Sentinel -1 = not yet observed. Implements the v_i(t)/r_c handover
+// component of eq:mob_rate, which was previously entirely absent -- only
+// the periodic 1/T_b beacon term existed. Checked once per PEM cycle
+// (same cadence Task 1.2 already samples position at), not continuously;
+// a pragmatic granularity match to the existing per-cycle position read,
+// not a new continuous mobility-polling schedule.
+static int edcf_zone_current[210]; // lazy-inited to -1 alongside edcf_zone_last_seen[][], see pem_write_node_features()
+
+// Category A (Sir 2026-07-27 v3): external V1 attacker rotating fake-MAC
+// beacons. Diagnostic-only for now (Tier 1) -- generates/counts fake
+// identities to verify the identity-novelty and table-miss signals Tier 2
+// (D2/D3) will use, but does NOT rewire edcf_phi_v1()'s live Term 2/3
+// formulas yet, per Sir's explicit Tier 1/Tier 2 gating.
+// Per-attacker rotating fake-MAC seed/counter: attacker k's k-th fake MAC
+// is 0xDEAD<k>000001 + (beacons sent so far), matching Sir's exact scheme.
+static uint32_t edcf_ext_fake_mac_next[210] = {0}; // next fake-MAC counter per attacker vehicle
+// Network-level per-cycle count of fake-MAC beacons observed (each one a
+// distinct, previously-unseen identity by construction) -- feeds the
+// identity-novelty diagnostic rho_new_identity_diag = fake/(fake+real).
+static uint32_t edcf_ext_fake_mac_count_p = 0;
+
+// T_b (Eq merkle_batch) -- min seconds between Merkle-batch commits to the
+// blockchain. Default 2.0 preserves the existing behaviour (a commit every
+// PEM cycle, see edcf_pem_write()'s call site). This is a SEPARATE timer from
+// the fixed 2.0s PEM/detection cycle cadence -- edcf_classify()'s TP/TN/FP/FN
+// are computed every PEM cycle regardless of edcf_merkle_batch_window, only
+// the /batch/commit POST frequency (ledger throughput/latency) is gated by it.
+static double edcf_merkle_batch_window = 2.0;
+
 // ---- PPMDS [19] real modified-ElGamal + PBC pairing baseline (all 3 variants)
 #define PPMDS_IN_ROUTING_CC
 #include "ppmds_baseline.h"
@@ -139751,7 +139962,7 @@ static std::string edcf_derive_kg(const std::string& k_root)
 // Simulated as named constants — in production computed at runtime from DKG.
 static const std::string EDCF_K_ROOT   = "EDCF_KROOT_DKG_2024";     // DKG master key
 static const std::string EDCF_NET_KEY  = "EDCF_KG_HMAC-AUTH_2024";  // KDF(k_root||"HMAC-AUTH")
-static const std::string EDCF_ATK_KEY  = "EDCF_STOLEN_KEY_2024";    // external attacker key
+static const std::string EDCF_ATK_KEY  = "EDCF_VALID_KEY_2024";    // external attacker key
 
 // ============================================================
 // PEM COUNTERS - 3 detectors x (cumul + per-cycle)
@@ -139799,24 +140010,322 @@ static bool     hdr_hmac=false;
 static uint32_t edcf_bcn_total=0,edcf_bcn_novel=0;
 static uint32_t edcf_bcn_total_p=0,edcf_bcn_novel_p=0;
 static uint32_t edcf_fm_cnt=0,edcf_fm_cnt_p=0;
+// Per-vehicle table-miss count, THIS PEM cycle only (Task 1.1 / Eq v1_tm
+// per-vehicle form) — reset alongside edcf_fm_cnt_p below. Sized like
+// edcf_wtopo_per_node (210) for the same vehicle-index range.
+static uint32_t edcf_tm_per_node[210] = {0};
+// Task 1.1: per-vehicle historical table-miss baseline — Welford online
+// mean/variance, same pattern as edcf_cp_mean/M2/n (used for Φ^V2 Term 3),
+// sampled once per PEM cycle with that cycle's final edcf_tm_per_node[i]
+// (see edcf_update_tm_baseline(), called from edcf_pem_write() before the
+// per-cycle reset). Used by edcf_robust_v1_tm_zscore() for xi_i^TM
+// (Eq v1_tm) = (lambda_i_TM - lambda_bar_TM) / sigma_TM.
+static double   edcf_tm_mean[210] = {0.0};
+static double   edcf_tm_M2[210]   = {0.0};
+static uint32_t edcf_tm_n[210]    = {0};
 static uint32_t edcf_alert_in=0,edcf_alert_out=0;
 static uint32_t edcf_alert_in_p=0,edcf_alert_out_p=0;
 static uint32_t edcf_posjump=0,edcf_posjump_p=0;
 static uint32_t edcf_wtopo=0,edcf_wtopo_p=0;
 static uint32_t edcf_wifi_flood=0,edcf_wifi_flood_p=0;
 static uint32_t edcf_wifi_legit=0,edcf_wifi_legit_p=0;
+// ── E4 rho_novelty(t) — Eq 4.1 ──────────────────────────────────────
+// edcf_bc_last_seen[id]: sim time of this source's most recent blockchain
+// submission (bc_submit_vehicle_tx runs for every packet, so this reuses
+// that real, already-happening event rather than inventing a new one).
+// -1e9 sentinel = never seen. Sized like bc_rep_cache/bc_isolated (300).
+static double   edcf_bc_last_seen[300];
+static bool     edcf_bc_last_seen_init = false; // one-time -1e9 fill
+static uint32_t edcf_novelty_events_p=0, edcf_atk_events_p=0; // per-cycle
 // ── Per-node counters for TGNN node feature vector x_i(t) ──────────
 // Eq node_feat_v: [Φ^V1_i, Φ^V2_i, Φ^V3_i, s_BC, r_i, τ_dir, ζ]
 static uint32_t edcf_bcn_per_node[210]       = {}; // r_i: beacon count per vehicle this window
+// Tier 2 Bug 3 fix (Sir 2026-07-28): frozen copy of edcf_bcn_per_node[] from
+// the LAST COMPLETE window, captured in edcf_pem_write()'s reset block right
+// before edcf_bcn_per_node[] is zeroed for the new window. Stage 2's
+// valid-key attribution (edcf_v1_stage2_validkey_score()) reads THIS array,
+// not the live-growing edcf_bcn_per_node[], so mu=10 is compared against a
+// genuinely COMPLETE window count -- no elapsed-time scaling needed and no
+// early-arrival right-tail artifact, since the count is never partial when
+// this is read. One-cycle-lagged by construction (same pattern already used
+// for edcf_rho_new_identity/edcf_phi_v1_stage1_net).
+static uint32_t edcf_bcn_final_count[210]    = {};
+// Sir diagnostic (2026-07-27): raw beacon arrival timestamps per vehicle,
+// this PEM window only — needed to compute beta_i = std(inter-beacon
+// intervals) / (mean(inter-beacon intervals) + 1e-6) for the proposed V1
+// Term 2 replacement (beacon-interval regularity). Buffer sized for well
+// over one window's worth of beacons at the 5Hz benign / 10Hz attacker
+// beacon rate. Reset alongside edcf_bcn_per_node in the per-cycle reset.
+static const int EDCF_BCN_TS_BUF = 32;
+static double   edcf_bcn_ts[210][EDCF_BCN_TS_BUF] = {{0}};
+static int      edcf_bcn_ts_cnt[210] = {0};
 static uint32_t edcf_alert_out_per_node[210] = {}; // A_i^out: alerts forwarded per node
 static uint32_t edcf_alert_in_per_node[210]  = {}; // A_i^in:  alerts received per node
 static uint32_t edcf_fm_per_node[210]        = {}; // FM count per node (V3 phi term 3)
+static uint32_t edcf_wtopo_per_node[210]     = {}; // WRONG_TOPO count per node, per cycle (V3 phi term 3, live detector)
 static bool     edcf_hmac_fail_per_node[210] = {}; // HMAC fail flag per node
 static bool     edcf_detected_per_node[210]  = {}; // was this node detected as attacker
 // ── edcf_pem_metrics.h included here: all referenced static globals
 //    (edcf_scenario, edcf_atk_count, ctrl_atk_count_, e_TP/TN/FP/FN,
 //    edcf_wifi_flood/legit) are now fully defined above this point.
 #include "edcf_pem_metrics.h"
+
+// =============================================================
+// AI MITIGATION SOCKET BRIDGE — pure POSIX sockets, same pattern
+// as the blockchain client above (bc_connect/bc_http_post_sync),
+// talking to edcf_inference_api.py (TGNN + LLM-LoRA r=16, port 3001)
+// via POST /mitigate/decide.
+//
+// Supervisor requirement: EML (M5) must not be a hardcoded constant
+// (previous code: t_detect + 3ms, flagged as target leakage). Instead:
+//   1. NS-3 sends pre-mitigation telemetry for the flagged node.
+//   2. Python runs REAL TGNN+LLM fusion inference, measuring
+//      wall-clock t_end - t_start = ai_delay with time.perf_counter().
+//   3. NS-3 schedules the firewall drop ai_delay + bc_overhead seconds
+//      of SIMULATED time from now (Simulator::Schedule), so EML in
+//      the PEM CSV is the authentic elapsed time between detection
+//      and the scheduled enforcement callback actually executing.
+// =============================================================
+static const std::string AI_API_HOST = "127.0.0.1";
+static const int         AI_API_PORT = 3001;
+static bool               ai_enabled = true;
+
+static int ai_connect()
+{
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    // LLM generation is real inference and can legitimately take several
+    // seconds on CPU — far more headroom than the 2s blockchain timeout,
+    // so a slow-but-genuine response isn't mistaken for a dead server.
+    struct timeval tv; tv.tv_sec = 30; tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port   = htons(AI_API_PORT);
+    inet_pton(AF_INET, AI_API_HOST.c_str(), &addr.sin_addr);
+    if (connect(fd, (struct sockaddr*)&addr, sizeof(addr)) != 0) { close(fd); return -1; }
+    return fd;
+}
+
+static std::string ai_http_post_sync(const std::string& path, const std::string& json_body)
+{
+    if (!ai_enabled) return "{}";
+    int fd = ai_connect();
+    if (fd < 0) return "{}";
+    std::string req = "POST " + path + " HTTP/1.0\r\n"
+                     + "Host: localhost\r\n"
+                     + "Content-Type: application/json\r\n"
+                     + "Content-Length: " + std::to_string(json_body.size()) + "\r\n"
+                     + "Connection: close\r\n\r\n"
+                     + json_body;
+    send(fd, req.c_str(), req.size(), 0);
+    std::string resp;
+    char buf[4096]; ssize_t n;
+    while ((n = recv(fd, buf, sizeof(buf)-1, 0)) > 0) { buf[n] = '\0'; resp += buf; }
+    close(fd);
+    size_t pos = resp.find("\r\n\r\n");
+    return (pos != std::string::npos) ? resp.substr(pos+4) : resp;
+}
+
+// ── Minimal JSON scalar extraction (same manual-parse style as
+//    bc_refresh_reputation() above — no JSON library dependency) ──
+static bool ai_json_get_string(const std::string& j, const std::string& key, std::string& out)
+{
+    // FIX: pattern used to require the value's opening quote immediately
+    // after the colon ("key":"), but Python's json.dumps() (used for every
+    // /mitigate/decide response) puts a space after the colon by default
+    // ("key": "value") — the old pattern never matched, so this always
+    // silently returned false, "decision"/"label" were never populated,
+    // and AiMitigationResult::drop stayed at its default-initialized
+    // false regardless of what the server actually decided. The AI never
+    // once actually dropped a node as a result, even when the inference
+    // API correctly answered DROP. Now tolerates an optional space.
+    std::string pat = "\"" + key + "\":";
+    size_t p = j.find(pat);
+    if (p == std::string::npos) return false;
+    p += pat.size();
+    while (p < j.size() && j[p] == ' ') p++;
+    if (p >= j.size() || j[p] != '"') return false;
+    p++;
+    size_t e = j.find('"', p);
+    if (e == std::string::npos) return false;
+    out = j.substr(p, e-p);
+    return true;
+}
+static bool ai_json_get_double(const std::string& j, const std::string& key, double& out)
+{
+    std::string pat = "\"" + key + "\":";
+    size_t p = j.find(pat);
+    if (p == std::string::npos) return false;
+    p += pat.size();
+    size_t e = j.find_first_of(",}", p);
+    try { out = std::stod(j.substr(p, e-p)); return true; } catch(...) { return false; }
+}
+
+struct AiMitigationResult { bool valid=false; bool drop=false; double ai_delay=0.0; std::string label; };
+
+// Forward declaration — real definition lives further down (after
+// edcf_last_x/_y/_vx/_vy/_t2/_pos_init are declared), reusing the exact
+// same dead-reckoning trajectory-inconsistency logic as
+// pem_write_node_features()'s ζ_i feature (Eq 3.16), so the AI server
+// gets the same ζ_i an offline-trained TGNN would have seen, not a
+// hardcoded placeholder.
+static double edcf_compute_zeta_for_node(uint32_t node_id, double t_now, double px, double py);
+
+// ── Full-graph node feature snapshot for the AI bridge ───────────────
+// The TGNN (edcf_tgnn_best.pt) was trained on ~200-node graphs with real
+// DSRC adjacency (step4_fusion_eval.py build_snap()); GATConv needs
+// neighbours to attend over. Struct + forward declaration here, real
+// definition lives next to pem_write_node_features() (after N_Vehicles,
+// edcf_bcn_per_node, etc. are declared) since it reuses the identical
+// per-node feature math.
+struct EdcfNodeFeat {
+    uint32_t node_id;
+    double zscore_v1_i, fanout_i, zeta, bcn_rate_i, alert_in_i, alert_out_i, s_bc;
+    double pos_x, pos_y;
+};
+static std::vector<EdcfNodeFeat> edcf_snapshot_all_node_features();
+
+// ── Cache of the last COMPLETED PEM cycle's network-wide stats ──────
+// edcf_pem_write()/write_csv_row() compute these once per cycle, AFTER
+// the packet loop that triggers AI queries — so this cycle's own row
+// isn't finalised yet when ai_request_mitigation() runs. Using the
+// previous cycle's numbers (populated by write_csv_row() further down)
+// is the same one-cycle lag edcf_ai_should_query() already accepts.
+struct EdcfPemWindow {
+    bool     valid = false;
+    uint32_t cycle = 0, atk_count = 0;
+    std::string scenario, label = "benign";
+    double TP=0,TN=0,FP=0,FN=0;
+    double Accuracy=0,MCC=0,F1=0,Precision=0,Recall=0,DetRate_pct=0;
+    double PDR_pct=0,ch_load_pct=0,CFSR=0,PAIR=0,CDR=1.0,MCR=0.0,CCR=1.0,EML_trusted_ms=0;
+    int    detected = 0;
+    double hmac_valid_pct=1.0,delta_tm_rate=0.0,gamma=1.0,eps_topo=0.0,eta_c=0.0;
+    double phi_v1_net=0.0,phi_v2_net=0.0,phi_v3_net=0.0;
+};
+static EdcfPemWindow g_last_pem_window;
+
+// ── Per-cycle cache of the serialized 200-node graph JSON ───────────
+// edcf_snapshot_all_node_features() + its JSON serialization were
+// previously rebuilt from scratch on EVERY ai_request_mitigation()
+// call — once per flagged node, not once per cycle. With N attackers
+// flagged in the same PEM cycle that's N redundant full-graph rebuilds
+// and N redundant ~200-node JSON serializations for byte-identical
+// content (the graph only changes once per cycle, at the next
+// edcf_snapshot_all_node_features() call after new packets arrive).
+// Caching by edcf_cycle collapses that back to 1 build per cycle.
+static std::string g_ai_nodes_json_cache;
+static uint32_t    g_ai_nodes_json_cache_cycle = UINT32_MAX;
+static const std::string& edcf_get_cached_nodes_json()
+{
+    if (g_ai_nodes_json_cache_cycle != edcf_cycle) {
+        std::vector<EdcfNodeFeat> nodes = edcf_snapshot_all_node_features();
+        std::ostringstream nj;
+        nj << "[";
+        for (size_t k = 0; k < nodes.size(); k++) {
+            const EdcfNodeFeat& nf = nodes[k];
+            if (k) nj << ",";
+            nj << "{"
+               << "\"node_id\":" << nf.node_id << ","
+               << "\"zscore_v1_i\":" << nf.zscore_v1_i << ","
+               << "\"fanout_i\":"    << nf.fanout_i << ","
+               << "\"zeta\":"        << nf.zeta << ","
+               << "\"bcn_rate_i\":"  << nf.bcn_rate_i << ","
+               << "\"alert_in_i\":"  << nf.alert_in_i << ","
+               << "\"alert_out_i\":" << nf.alert_out_i << ","
+               << "\"s_BC\":"        << nf.s_bc << ","
+               << "\"pos_x\":" << nf.pos_x << ",\"pos_y\":" << nf.pos_y
+               << "}";
+        }
+        nj << "]";
+        g_ai_nodes_json_cache = nj.str();
+        g_ai_nodes_json_cache_cycle = edcf_cycle;
+    }
+    return g_ai_nodes_json_cache;
+}
+
+// One synchronous round-trip per flagged node per PEM cycle (see
+// edcf_ai_should_query() below) — the LLM call is real inference and
+// must not be fired per-packet or the simulation would stall.
+static AiMitigationResult ai_request_mitigation(uint32_t node_id, double sim_ts)
+{
+    AiMitigationResult r;
+
+    const EdcfPemWindow& w = g_last_pem_window;
+
+    std::ostringstream body;
+    body << "{"
+         << "\"node_id\":" << node_id << ","
+         << "\"scenario\":\"" << edcf_scenario << "\","
+         << "\"window\":{"
+         <<   "\"cycle\":" << edcf_cycle << ","
+         <<   "\"time_s\":" << sim_ts << ","
+         <<   "\"scenario\":\"" << edcf_scenario << "\","
+         <<   "\"atk_count\":" << edcf_atk_count << ","
+         <<   "\"TP\":" << w.TP << ",\"TN\":" << w.TN << ",\"FP\":" << w.FP << ",\"FN\":" << w.FN << ","
+         <<   "\"MCC\":" << w.MCC << ",\"F1\":" << w.F1 << ","
+         <<   "\"Precision\":" << w.Precision << ",\"Recall\":" << w.Recall << ","
+         <<   "\"PDR_pct\":" << w.PDR_pct << ",\"DetRate_pct\":" << w.DetRate_pct << ","
+         <<   "\"ch_load_pct\":" << w.ch_load_pct << ","
+         <<   "\"delta_tm_rate\":" << w.delta_tm_rate << ","
+         <<   "\"phi_v1_net\":" << w.phi_v1_net << ",\"PAIR\":" << w.PAIR << ","
+         <<   "\"gamma\":" << w.gamma << ",\"phi_v2_net\":" << w.phi_v2_net << ","
+         <<   "\"eps_topo\":" << w.eps_topo << ",\"phi_v3_net\":" << w.phi_v3_net << ","
+         <<   "\"CFSR\":" << w.CFSR << ",\"EML_trusted_ms\":" << w.EML_trusted_ms << ","
+         <<   "\"CDR\":" << w.CDR << ",\"MCR\":" << w.MCR << ",\"CCR\":" << w.CCR << ","
+         <<   "\"row_type\":\"CYCLE\","
+         <<   "\"eta_c\":" << w.eta_c << ",\"hmac_valid_pct\":" << w.hmac_valid_pct << ","
+         <<   "\"detected\":" << w.detected
+         << "},"
+         << "\"nodes\":" << edcf_get_cached_nodes_json()
+         << "}";
+
+    std::string resp = ai_http_post_sync("/mitigate/decide", body.str());
+    if (resp.empty() || resp == "{}") return r;   // server unreachable — no decision, no drop
+
+    std::string decision;
+    if (ai_json_get_string(resp, "decision", decision))
+        r.drop = (decision == "DROP");
+    ai_json_get_double(resp, "ai_delay", r.ai_delay);
+    ai_json_get_string(resp, "label", r.label);
+    r.valid = true;
+    return r;
+}
+
+// ── Per-PEM-cycle query gate: fires the (expensive, real) AI round-trip
+//    at most once per node per evaluation window, not once per packet ──
+static std::set<uint32_t> g_ai_queried_this_cycle;
+static uint32_t           g_ai_last_cycle = 0;
+static bool edcf_ai_should_query(uint32_t node_id, uint32_t current_cycle)
+{
+    if (current_cycle != g_ai_last_cycle) {
+        g_ai_queried_this_cycle.clear();
+        g_ai_last_cycle = current_cycle;
+    }
+    if (g_ai_queried_this_cycle.count(node_id)) return false;
+    g_ai_queried_this_cycle.insert(node_id);
+    return true;
+}
+
+// ── Scheduled enforcement callback — the ONLY place this pipeline
+//    actually drops the node, and the ONLY place EML (M5) gets
+//    recorded for it. Because it runs via
+//    Simulator::Schedule(Seconds(ai_delay+bc_overhead), ...),
+//    Simulator::Now() here IS t_detect + real AI latency + real BC
+//    overhead — an authentic measurement, not a hardcoded constant.
+static void edcf_apply_ai_mitigation(uint32_t node_id, double t_detect)
+{
+    std::string sourceId = std::to_string(node_id);
+    m_blockedNodes.insert(sourceId);
+    double t_install = Simulator::Now().GetSeconds();
+    pem_record_mitigation_ext(t_detect, t_install, "TRUSTED");
+    NS_LOG_UNCOND("[t=" << std::fixed << std::setprecision(6) << t_install << "s] "
+                  << "[AI-MITIGATION] node " << node_id << " DROPPED — authentic EML="
+                  << std::setprecision(1) << (t_install - t_detect)*1000.0 << "ms "
+                  << "(real TGNN+LLM inference + BC multisig latency, not hardcoded)");
+}
+
 static uint32_t edcf_recomp=0,edcf_recomp_p=0;
 //static double   edcf_v3_fake_x=0,edcf_v3_fake_y=0;
 
@@ -139835,6 +140344,11 @@ static const int   EDCF_PSI_K     = 8;       // window size K
 static double      edcf_alert_times[8]={0};  // circular buffer of alert timestamps
 static int         edcf_alert_t_idx=0;       // next write index
 static int         edcf_alert_t_cnt=0;       // how many filled so far
+// Not touched by this recalibration pass: edcf_alert_times[] is a K=8
+// circular buffer of the K most recent alert arrival TIMES, not a
+// cumulative/growing counter, so it was never subject to the saturation
+// bug — the variance it measures is already correctly scoped to "the last
+// 8 alerts," whatever cycle they fell in.
 static const double EDCF_PSI_TH   = 0.05;   // variance threshold — below = attack
 
 // ============================================================
@@ -139845,7 +140359,36 @@ static const double EDCF_PSI_TH   = 0.05;   // variance threshold — below = at
 static double edcf_cp_mean  = 0.0;
 static double edcf_cp_M2    = 0.0;
 static uint32_t edcf_cp_n   = 0;
+// Not touched: α₃ is a standard-deviation multiplier against
+// edcf_cp_mean/M2/n, which now samples a genuine per-cycle historical
+// baseline (see edcf_phi_v2() Term 3 fix) — 2σ above that baseline is
+// already a conventional, defensible outlier bar and was never compared
+// against the wrong (cumulative) quantity the way the counters it uses
+// were.
 static const double EDCF_ALPHA3 = 2.0;  // alpha3 from report
+// α₁ — beacon-rate z-score multiplier (Eq 3.11, S_i^(1) > α₁). No numeric
+// value given in the report's equation text, so this uses the same
+// conventional 2σ outlier bar already applied consistently for α₂/α₃/α₄.
+static const double EDCF_ALPHA1 = 2.0;
+
+// T_b (Eq mob_rate): legitimate beacon period, 5 Hz. Moved here (was
+// declared much later, next to edcf_inject_legit_beacon_for_vehicle()) so
+// Tier 2 D1's Poisson score (which needs it for mu = Delta t / T_b) can use
+// it -- same constant, same value, only the declaration site changed.
+static const double EDCF_T_B = 0.2;
+
+// Tier 2 Decision 1 (Sir 2026-07-28): V1 detection window, Delta t = 2s --
+// already what the sim runs (edcf_pem_write()'s 2.0s schedule resets
+// edcf_bcn_per_node[]/edcf_tm_per_node[] every 2.0s), so this constant just
+// names the existing cadence for the mu calculation below rather than
+// changing anything.
+static const double EDCF_DELTA_T_V1 = 2.0;
+
+// Tier 2 D3 (Sir 2026-07-28): binary table-miss threshold for Phi^V1 Term 3
+// -- alpha2=1, any table-miss this window flags the vehicle. Kept SEPARATE
+// from EDCF_ALPHA2 below (used by V3's wtopo Term 3, still 2.0) -- Sir's
+// Tier 2 message only respecifies V1's table-miss bar, not V3's.
+static const double EDCF_ALPHA2_V1_TM = 1.0;
 
 // ============================================================
 // V3: τ^dir_i — directional consistency index (Eq 3.15)
@@ -139859,6 +140402,12 @@ static double edcf_pos_x[210][5] = {{0}};     // per-node x history (sized for n
 static double edcf_pos_y[210][5] = {{0}};     // per-node y history
 static int    edcf_pos_idx[210]  = {0};        // circular index per node
 static int    edcf_pos_cnt[210]  = {0};        // how many filled per node
+// Not touched: τ^dir is computed from a K=5 circular buffer of recent
+// POSITIONS (edcf_pos_x/y), and ζᵢ is an absolute dead-reckoning error in
+// metres — neither is a cumulative/growing counter, so neither was
+// affected by the saturation bug. ζᵢ's actual problem (two turns ago) was
+// a wiring bug (comparing stale state to itself instead of the live
+// position), already fixed; its scale (20m) doesn't need to change.
 static const double EDCF_TAU_TH  = 0.5;      // τ^dir threshold — below = attack
 static const double EDCF_ZETA_TH = 20.0; // ζᵢ threshold — 20m (Eq 3.16) [restored]
 
@@ -139875,6 +140424,30 @@ static double edcf_last_vy[210]  = {0};   // velocity y component
 static double edcf_last_t2[210]  = {0};   // last update time
 static bool   edcf_pos_init[210] = {false};
 
+// ζ_i(t) — trajectory inconsistency (Eq 3.16), identical dead-reckoning
+// logic to the inline computation inside pem_write_node_features() below.
+// Factored out so ai_request_mitigation() (defined earlier in this file,
+// before these per-node arrays exist) can call it via forward declaration.
+// Same caveat as pem_write_node_features(): edcf_last_x/_vx/etc are only
+// populated for v3 scenarios inside edcf_phi_v3(), so this legitimately
+// returns 0.0 for v1/v2 — that mirrors the offline training data exactly,
+// it is not a placeholder.
+static double edcf_compute_zeta_for_node(uint32_t node_id, double t_now, double px, double py)
+{
+    double zeta = 0.0;
+    if(node_id < 210 && edcf_pos_init[node_id]){
+        double dt = t_now - edcf_last_t2[node_id];
+        if(dt > 0.001){
+            double pred_x = edcf_last_x[node_id] + edcf_last_vx[node_id]*dt;
+            double pred_y = edcf_last_y[node_id] + edcf_last_vy[node_id]*dt;
+            double dx = px - pred_x;
+            double dy = py - pred_y;
+            zeta = std::sqrt(dx*dx+dy*dy);
+        }
+    }
+    return zeta;
+}
+
 // ============================================================
 
 // ── Baseline method constants ─────────────────────────────────
@@ -139884,12 +140457,59 @@ static bool   edcf_pos_init[210] = {false};
 static const double GYAWALI_TH    = 0.35;  // threshold: below = malicious
 static const double ANY_THRESHOLD = 2.5;   // flowmod rate multiplier (Anyanwu SVM)
 
-// Thresholds
+// Thresholds — recalibrated for the now-bounded PER-CYCLE Φ scores.
+//
+// Θ^V1/V2/V3 (each Φ^Vk sums three 0/1-or-small-continuous terms, Eq
+// 3.11/3.14/3.17): previously 1.5, requiring the equivalent of ~2 of 3
+// terms to fire together. That was implicitly "safe" only because the old
+// cumulative counters eventually pushed the score arbitrarily high anyway
+// (the saturation bug) — the exact threshold value never mattered. Now
+// that Φ is correctly bounded to what happened in THIS cycle, 1.5 is
+// usually unreachable: for VALID_KEY attackers in particular, the
+// identity/timing-regularity terms can legitimately stay near 0 (a valid
+// key means no novel-identity signal), so requiring corroboration from
+// more than one term structurally guarantees a miss regardless of how
+// severe the volume-based term is. Lowering to 0.9 means any ONE term
+// firing at full confidence (a 0/1 indicator = 1.0) is sufficient on its
+// own — "OR across independently-sufficient evidence" rather than
+// "AND enough evidence to sum past 1.5" — matching the same reasoning
+// already applied to gamma_config.json's V3=0.23 (not every variant/key
+// regime can supply corroborating evidence from every term).
+// Tier 2 D4 (Sir 2026-07-28): Theta^V1 recalibrated to 0.30 now that all
+// three Phi^V1 terms are genuinely working (D1 Poisson score, D2 identity
+// novelty, D3 binary table-miss). At AtkCnt=0 all three terms are 0 ->
+// Phi^V1=0, well below 0.30. At the lowest attack level (AtkCnt=20) each
+// term is already expected near/above ~0.5 from the fake-MAC fraction ->
+// Phi^V1~=1.5, well above 0.30. Placeholder pending the post-D1-D5
+// verification run and the full-sweep MCC-maximizing recalibration Sir
+// asked for afterward.
+static const double EDCF_THETA_V1 = 0.30;
+// CLI-bindable (--edcf_theta_v2, see CommandLine block near main()) for the
+// v2_theta sensitivity sweep; not const since cmd.AddValue() must write to it.
+static double EDCF_THETA_V2 = 0.9;
+static const double EDCF_THETA_V3 = 0.9;
+
+// α₂ (table-miss / wtopo surge bar, Eq 3.10/3.14/3.20 Term 3) and α₃
+// (control-plane load spike z-score multiplier, Eq 3.14 Term 3) are
+// compared against genuinely bounded per-cycle counts as of the last fix
+// (edcf_fm_cnt_p, edcf_wtopo_p, edcf_recomp_p) — their numeric values were
+// never the source of the saturation bug (the counters they were compared
+// against were), and both are already conventional, defensible bars for
+// "more than a couple of stray/expected events per cycle" (α₂=2) and "more
+// than 2 standard deviations above this attack's own per-cycle historical
+// baseline" (α₃=2). Left unchanged.
 static const double EDCF_ALPHA2   = 2.0;
-static const double EDCF_PHI_TH   = 2.5;
-static const double EDCF_THETA_V1 = 1.5;
-static const double EDCF_THETA_V2 = 1.5;
-static const double EDCF_THETA_V3 = 1.5;
+
+// ϕ_th (V2 Term 1, alert fan-out ratio A_out/A_in > ϕ_th, Eq 3.12):
+// lowered from 2.5 to 1.2. A_out/A_in=1.0 is exactly what pure 1:1
+// relay/forwarding looks like (every received alert forwarded once, no
+// amplification) — 2.5 demanded two and a half times that just to
+// register as an amplification storm, which the per-cycle-bounded ratio
+// rarely reaches even under real attack load. 1.2 requires genuine
+// amplification (>20% more alerts leaving the network than entering it)
+// while still being clearly above the 1.0 "plain relay" baseline, so
+// benign forwarding traffic doesn't trip it.
+static const double EDCF_PHI_TH   = 1.2;
 
 // ============================================================
 // HMAC-SHA256 — Eq 3.18: HMAC(k_g, m_i || t)
@@ -139988,33 +140608,273 @@ static bool edcf_verify_hmac_full(const std::string& key, const std::string& msg
 // ----------------------------------------------------------
 // V1: Φ^V1(t) = 𝟙[S^(1)_i > α₁] + ρ_new(t) + 𝟙[ξ^TM(t) > α₂]
 // Eq 3.11 — three independent terms:
-//   Term 1: beacon rate z-score flag     (Eq 3.8) — rho > α₁
-//   Term 2: identity novelty rate        (Eq 3.9) — raw ρ_new value
-//   Term 3: table-miss surge indicator   (Eq 3.10) — fm_cnt > α₂
+//   Term 1: beacon rate z-score flag     (Eq 3.8) — S_i^(1) > α₁ (per-node i)
+//   Term 2: identity novelty rate        (Eq 3.9) — raw ρ_new value (network)
+//   Term 3: table-miss surge indicator   (Eq 3.10) — fm_cnt > α₂ (network)
 //
-// Uses CUMULATIVE counters (not per-packet) so the score reflects
-// the network-wide state across the observation window, not just
-// the single packet being processed. This avoids FP on individual
-// legitimate beacon packets when cumulative rho is meaningful.
+// Term 1 carries the ONLY per-node subscript in Eq 3.11 (S_i^(1)), so it is
+// the sole term that can discriminate the packet's actual sender from the
+// rest of the network — Terms 2/3 are genuine network aggregates per the
+// report and stay that way. Previously Term 1 used the network-wide ratio
+// rho>0.3 in place of S_i^(1), so a V1 attacker flooding FAKE_BEACON from
+// its OWN node_id (confirmed via edcf_inject_v1_beacon()) never stood out:
+// rho is diluted across all 200 vehicles' beacons and rarely exceeds 0.3.
+// Fixed: S_i^(1) is now a genuine cross-sectional z-score of THIS node's
+// per-cycle beacon count (edcf_bcn_per_node[]) against the population mean
+// — a flooding attacker's own count sits far above every benign node's,
+// so its z-score clears α₁ even while the network-wide rho stays low.
 // ----------------------------------------------------------
-static double edcf_phi_v1()
+
+// Robust per-vehicle V1 beacon-rate z-score (Eq v1_zscore, Task 1.3):
+// median/MAD over a trust-filtered reference population (Eq v1_ref).
+// Shared by edcf_phi_v1() (real-time per-packet detection) and
+// pem_write_node_features() (TGNN training CSV's zscore_v1_i/phi_v1_i
+// columns) so both paths compute the identical value — previously the
+// CSV writer had its own separate mean/std copy that this replaces too.
+static double edcf_robust_v1_zscore(uint32_t node_id)
 {
-    // ρ_new(t): fraction of beacons from IDs absent in blockchain (Eq 3.9)
-    // Use cumulative counters — rho reflects full window, not one packet
-    double rho=(edcf_bcn_total>0)?
-        (double)edcf_bcn_novel/edcf_bcn_total:0.0;
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    if(_vi<0 || _vi>=(int)N_Vehicles || N_Vehicles<=1) return 0.0;
 
-    // Term 1: 𝟙[S^(1)_i > α₁] — beacon rate z-score exceeds threshold
-    double t1=(rho>0.3?1.0:0.0);
+    // Eq v1_ref: reference population restricted to vehicles with
+    // established blockchain reputation s_BC >= R_th_ref, falling back
+    // to the full population if fewer than N_min qualify.
+    static const double EDCF_RTH_REF = 0.3;
+    const uint32_t n_min = (uint32_t)(0.3 * (double)N_Vehicles);
 
-    // Term 2: ρ_new(t) — raw identity novelty rate (Eq 3.9)
-    double t2=rho;
+    std::vector<double> ref_rates;
+    ref_rates.reserve(N_Vehicles);
+    for(uint32_t i=0;i<N_Vehicles;i++){
+        uint32_t nid = (uint32_t)EDCF_VEHICLE_BASE + i;
+        double s_bc_i = (nid < 300) ? bc_rep_cache[nid] : 1.0;
+        if(s_bc_i >= EDCF_RTH_REF) ref_rates.push_back((double)edcf_bcn_per_node[i]);
+    }
+    if(ref_rates.size() < n_min){
+        ref_rates.clear();
+        for(uint32_t i=0;i<N_Vehicles;i++)
+            ref_rates.push_back((double)edcf_bcn_per_node[i]);
+    }
 
-    // Term 3: 𝟙[ξ^TM(t) > α₂] — table-miss surge (Eq 3.10)
-    // Use cumulative fm_cnt — reflects controller overload across window
-    double t3=(edcf_fm_cnt>EDCF_ALPHA2?1.0:0.0);
+    auto median_of = [](std::vector<double> v)->double{
+        size_t n = v.size();
+        if(n==0) return 0.0;
+        std::sort(v.begin(), v.end());
+        return (n%2) ? v[n/2] : 0.5*(v[n/2-1]+v[n/2]);
+    };
 
-    return t1+t2+t3;
+    double r_median = median_of(ref_rates);
+    std::vector<double> abs_dev;
+    abs_dev.reserve(ref_rates.size());
+    for(double r : ref_rates) abs_dev.push_back(std::fabs(r - r_median));
+    double mad = median_of(abs_dev);
+
+    static const double EDCF_EPS_MAD = 1e-6; // avoid /0 in degenerate windows
+    return ((double)edcf_bcn_per_node[_vi] - r_median) / (mad + EDCF_EPS_MAD);
+}
+
+// Tier 2 D1 (Sir 2026-07-28), elapsed-time fix (Sir 2026-07-28 Bug 1):
+// two-tailed Poisson dispersion score,
+// S_i^(1)(t) = (count_i(Delta t) - mu_effective) / sqrt(mu_effective),
+// mu_effective = (t_elapsed / Delta t) * mu_full, mu_full = Delta t/T_b = 10.
+// Replaces edcf_robust_v1_zscore() as the live Term 1 in edcf_phi_v1()
+// (edcf_robust_v1_zscore() itself is left in place -- still used by
+// pem_write_node_features()'s zscore_v1_i/phi_v1_i TGNN feature columns,
+// which are out of scope for this Tier 2 pass per instruction to leave
+// TGNN-facing work for later). count_i is this vehicle's own raw per-cycle
+// beacon count (edcf_bcn_per_node[]), which is still ACCUMULATING live as
+// packets arrive throughout the 2s window -- comparing it against the
+// fixed FULL-window mu=10 (Sir's original D1 wording) meant every vehicle's
+// count looked anomalously low relative to mu right after every window
+// reset, before it had time to climb toward 10, causing a universal
+// false-positive burst at the start of every cycle (Bug 1, found in the
+// Sweep 1 data). Scaling mu to how far into the CURRENT window this packet
+// arrives (t_elapsed = now - edcf_v1_window_start_t) removes that bias
+// while keeping the same live per-packet evaluation the rest of the
+// architecture already relies on. For a valid-key attacker flooding under
+// its own real identity, count_i sits far ABOVE mu_effective at any point
+// in the window (S strongly positive); a benign vehicle tracks
+// mu_effective closely (S~=0) throughout; two-tailed |S|>alpha1 also
+// catches an external attacker whose real identity's legitimate-beacon
+// count is suppressed while it floods under rotated fake MACs instead.
+static double edcf_poisson_v1_score(uint32_t node_id)
+{
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    if(_vi<0 || _vi>=(int)N_Vehicles) return 0.0;
+    double count_i = (double)edcf_bcn_per_node[_vi];
+
+    double t_elapsed = Simulator::Now().GetSeconds() - edcf_v1_window_start_t;
+    if(t_elapsed < 0.0) t_elapsed = 0.0;
+    if(t_elapsed > EDCF_DELTA_T_V1) t_elapsed = EDCF_DELTA_T_V1;
+
+    double mu_full = EDCF_DELTA_T_V1 / EDCF_T_B; // = 2.0/0.2 = 10
+    double mu_effective = (t_elapsed / EDCF_DELTA_T_V1) * mu_full;
+    double mu_safe = (mu_effective > 1e-6) ? mu_effective : 1e-6; // avoid /0 right at window start
+
+    return (count_i - mu_effective) / std::sqrt(mu_safe);
+}
+
+// Per-vehicle table-miss z-score (Eq v1_tm, Task 1.1):
+// xi_i^TM = (lambda_i_TM - lambda_bar_TM) / sigma_TM, where lambda_bar_TM
+// and sigma_TM are this vehicle's own historical mean/stdev of per-cycle
+// table-miss counts, tracked online via Welford's method
+// (edcf_tm_mean/M2/n, updated once per PEM cycle by
+// edcf_update_tm_baseline() — same pattern as edcf_cp_mean/M2/n used for
+// Φ^V2 Term 3). Requires >=3 historical samples before the baseline is
+// considered established; returns 0.0 during that warm-up, matching the
+// same gate edcf_phi_v2()'s Term 3 uses for edcf_cp_n.
+static double edcf_robust_v1_tm_zscore(uint32_t node_id)
+{
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    if(_vi<0 || _vi>=210) return 0.0;
+    if(edcf_tm_n[_vi] < 3) return 0.0;
+
+    double var   = (edcf_tm_n[_vi]>1) ? edcf_tm_M2[_vi]/(edcf_tm_n[_vi]-1) : 0.0;
+    double sigma = std::sqrt(var>0?var:0.0);
+    static const double EDCF_EPS_TM = 1e-6; // avoid /0, same convention as Task 1.3's MAD epsilon
+    return ((double)edcf_tm_per_node[_vi] - edcf_tm_mean[_vi]) / (sigma + EDCF_EPS_TM);
+}
+
+// Welford update of the per-vehicle table-miss baseline — called once per
+// PEM cycle (edcf_pem_write()) with this cycle's FINAL edcf_tm_per_node[i]
+// totals, before they are reset to 0, mirroring edcf_update_cp_load()'s
+// call site/timing exactly.
+static void edcf_update_tm_baseline()
+{
+    for(uint32_t i=0; i<N_Vehicles && i<210; i++){
+        edcf_tm_n[i]++;
+        double sample = (double)edcf_tm_per_node[i];
+        double delta  = sample - edcf_tm_mean[i];
+        edcf_tm_mean[i] += delta / edcf_tm_n[i];
+        double delta2 = sample - edcf_tm_mean[i];
+        edcf_tm_M2[i]  += delta * delta2;
+    }
+}
+
+// Sir diagnostic (2026-07-27): beta_i = std(inter-beacon intervals) /
+// (mean(inter-beacon intervals) + 1e-6), computed from this vehicle's raw
+// beacon arrival timestamps recorded THIS PEM window (edcf_bcn_ts[],
+// Task: proposed V1 Term 2 replacement — beacon-interval regularity,
+// diagnostic-only, not wired into edcf_phi_v1() yet per Sir's instruction
+// not to implement anything beyond the measurement). Sample variance
+// (n-1 denominator) over the intervals, same convention already used for
+// Φ^V2's inter-alert gap dispersion (edcf_phi_v2() Term 2). Requires >=3
+// beacons (>=2 intervals) in the window; n_intervals_out reports how many
+// intervals were actually used so the caller can skip vehicles with <3
+// beacons, matching Sir's requirement exactly.
+static double edcf_beacon_interval_beta(uint32_t node_id, int& n_intervals_out)
+{
+    n_intervals_out = 0;
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    if(_vi<0 || _vi>=210) return 0.0;
+
+    int cnt = edcf_bcn_ts_cnt[_vi];
+    if(cnt < 3) return 0.0;
+
+    double intervals[EDCF_BCN_TS_BUF];
+    int ni = 0;
+    for(int k=1;k<cnt;k++) intervals[ni++] = edcf_bcn_ts[_vi][k] - edcf_bcn_ts[_vi][k-1];
+    n_intervals_out = ni;
+
+    double sum=0.0;
+    for(int k=0;k<ni;k++) sum += intervals[k];
+    double mean = sum/ni;
+    double var=0.0;
+    for(int k=0;k<ni;k++){ double d=intervals[k]-mean; var += d*d; }
+    var = (ni>1) ? var/(ni-1) : 0.0;
+    double sd = std::sqrt(var>0?var:0.0);
+    return sd/(mean+1e-6);
+}
+
+// Tier 2 Bug 3 fix (Sir 2026-07-28): Stage 2 valid-key attribution score.
+// S_i^(1) = (final_count_i - mu_full) / sqrt(mu_full), mu_full=10, using
+// edcf_bcn_final_count[] -- the FROZEN, COMPLETE previous-window count, not
+// the live-growing edcf_bcn_per_node[]. No elapsed-time scaling: the count
+// read here is never partial, so there is no early-arrival artifact to
+// correct for. RIGHT-TAIL ONLY (S > +alpha1, not |S| > alpha1) -- a
+// valid-key attacker floods under its OWN real identity (count~=20,
+// S~=+3.16), a benign vehicle's complete-window count settles near mu=10
+// (S~=0), and the left tail is not evaluated here at all (that's the
+// artifact Bug 3 fixed: evaluating the left tail live, mid-window, is what
+// falsely flagged 23 benign vehicles whose fixed per-vehicle timer offset
+// happened to place their first beacon very early in every window).
+static bool edcf_v1_stage2_validkey_rightonly(uint32_t node_id)
+{
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    if(_vi<0 || _vi>=210) return false;
+    double mu_full = EDCF_DELTA_T_V1 / EDCF_T_B; // = 10
+    double s = ((double)edcf_bcn_final_count[_vi] - mu_full) / std::sqrt(mu_full);
+    return s > EDCF_ALPHA1;
+}
+
+// Tier 2 Bug 2/Bug 3 fix (Sir 2026-07-28): Stage 2 per-vehicle ATTRIBUTION.
+// External and valid-key attackers are caught via two SEPARATE, independent
+// paths (Sir's exact instruction, 2026-07-28) rather than one shared
+// two-tailed Term 1 check:
+//   - External attacker MACs: caught via Term 3 (table-miss) ALONE.
+//     Every fake MAC causes exactly one table-miss (Tier 1/2 finding), so
+//     ξ_i^TM(Δt) >= 1 already flags them with zero benign FP -- Term 1's
+//     left tail is redundant here and was the OTHER half of the artifact
+//     Bug 3 removed (the two-tailed elapsed-time-scaled score was
+//     originally reused for Stage 2 too; now Stage 2 no longer touches
+//     edcf_poisson_v1_score() at all).
+//   - Valid-key attacker MACs: caught via Term 1's RIGHT tail ONLY,
+//     evaluated at window-end on the frozen complete-window count
+//     (edcf_v1_stage2_validkey_rightonly() above) -- valid-key attackers
+//     keep their own real MAC (no table-miss, Term 3 can't see them), so
+//     this is their only Stage 2 signal.
+// ρ_new (Term 2) never appears here — it's a network-wide signal by Eq
+// 3.11's own definition (no subscript i) and belongs only in Stage 1
+// (edcf_phi_v1_stage1_net), which is unchanged and still uses BOTH tails
+// of the elapsed-time-scaled network-level Poisson fraction.
+static bool edcf_v1_stage2_attacker(uint32_t node_id)
+{
+    int _vi = (int)node_id - EDCF_VEHICLE_BASE;
+    bool term3_external = (_vi>=0 && _vi<210 &&
+                  (double)edcf_tm_per_node[_vi] >= EDCF_ALPHA2_V1_TM);
+    bool term1_validkey_rightonly = edcf_v1_stage2_validkey_rightonly(node_id);
+    return term3_external || term1_validkey_rightonly;
+}
+
+// Tier 2 Bug 2 fix (Sir 2026-07-28), gate REMOVED per Sir's V1 Sweep
+// Analysis and Corrected Sweep Instructions (2026-07-29): two-stage V1
+// detection, Stage 1 no longer gates Stage 2.
+// Stage 1 (network-level, unchanged Eq 3.11 formula): is the NETWORK under
+// V1 attack this window? edcf_phi_v1_stage1_net = Term1_fraction +
+// rho_new(t) + Term3_fraction, published once per PEM cycle in
+// pem_write_node_features() (identical to the D5 diagnostic's
+// phi_v1_composite_net). This is now a NETWORK-LEVEL REPORTING METRIC ONLY
+// (phi_v1_net CSV column, feeds CFSR/CDR/EML per Sir) -- it no longer
+// gates Stage 2, matching the paper's original formulation where Φ^V1(t)
+// and ŷ_i^(V1) were always separate computations. The gate was an
+// implementation shortcut added during Tier 2 debugging to suppress FP
+// from a then-broken Stage 2; Stage 2 has since been confirmed FP=0 by
+// construction (Term 3 external, Term 1 right-tail valid-key -- both
+// verified zero-FP across all 14 sweep runs), so the gate was actively
+// harming valid-key detection at low attacker counts (rho_new=0.000 for
+// valid-key by design, keeping Φ^V1 below Θ^V1=0.300 and blocking Stage 2
+// even though Stage 2 itself would have attributed correctly) with no
+// remaining FP-suppression benefit. Removed.
+// Stage 2 (per-vehicle attribution, edcf_v1_stage2_attacker() above): WHICH
+// specific vehicle is responsible, using only Terms 1/3 (genuine per-MAC
+// values). Now UNCONDITIONAL -- runs every window, every packet,
+// independent of Stage 1's composite value.
+// Returns 1.0/0.0 (not a continuous score) so the existing generic
+// sig_flag=(phi>=theta) dispatch in edcf_on_packet() keeps working
+// unchanged: 1.0>=0.30 is true, 0.0>=0.30 is false.
+static double edcf_phi_v1(uint32_t node_id)
+{
+    return edcf_v1_stage2_attacker(node_id) ? 1.0 : 0.0;
+}
+
+// Network-level Φ^V1 summary for CSV logging (phi_v1_net column) only.
+// Reports the Stage 1 composite score (the actual continuous
+// Term1_fraction+rho_new+Term3_fraction value, updated once per PEM cycle)
+// -- a pure reporting metric ("is V1 happening in this network?") that no
+// longer gates detection (see edcf_phi_v1() above). Does not drive
+// detection.
+static double edcf_phi_v1_network_avg()
+{
+    return edcf_phi_v1_stage1_net;
 }
 
 // ----------------------------------------------------------
@@ -140050,10 +140910,15 @@ static void edcf_update_cp_load(double new_sample)
 static double edcf_phi_v2()
 {
     // Term 1: 𝟙[ϕᵢ > ϕ_th] — alert fan-out ratio (Eq 3.12)
-    // Use cumulative counters — ratio builds across full window
+    // Use PER-CYCLE counters (edcf_alert_in_p/out_p, reset every PEM cycle
+    // at the "Reset per-cycle counters" block) — the cumulative counters
+    // (edcf_alert_in/out) only grow across the whole run, so their ratio
+    // never comes back down once it first crosses ϕ_th, permanently
+    // latching sig_flag true for every future packet (this was the root
+    // cause of the V2a FP saturation starting at Cycle 3).
     // ϕᵢ = A_out / max(A_in, 1) — values >> 1 = amplification attack
-    double phi_i=(edcf_alert_in>0)?
-        (double)edcf_alert_out/edcf_alert_in:0.0;
+    double phi_i=(edcf_alert_in_p>0)?
+        (double)edcf_alert_out_p/edcf_alert_in_p:0.0;
     double t1=(phi_i>EDCF_PHI_TH?1.0:0.0);
 
     // Term 2: 𝟙[ψ(t) < ψ_th] — inter-alert interval dispersion (Eq 3.13)
@@ -140086,13 +140951,21 @@ static double edcf_phi_v2()
     }
 
     // Term 3: 𝟙[λ^CP(t) > λ̄^CP + α₃σ_CP] — control-plane load spike
-    // Welford running mean/variance of cumulative recomp counter
+    // edcf_cp_mean/M2/n (Welford) are now sampled ONCE per PEM cycle, with
+    // that cycle's final recomp_p total, at the cycle-reset point below —
+    // so they track a historical baseline of PER-CYCLE recomp rates.
+    // Compare against edcf_recomp_p (this cycle's live count), not the
+    // ever-growing cumulative edcf_recomp: comparing a monotonically
+    // increasing cumulative counter against a bounded per-cycle baseline
+    // mean guaranteed it would exceed threshold permanently once the run
+    // had gone on long enough, latching sig_flag true forever (same
+    // saturation mechanism as the Term 1 fix above).
     double t3=0.0;
     if(edcf_cp_n>=3){
         double cp_var=(edcf_cp_n>1)?edcf_cp_M2/(edcf_cp_n-1):0.0;
         double cp_std=std::sqrt(cp_var>0?cp_var:0);
         double threshold=edcf_cp_mean+EDCF_ALPHA3*cp_std;
-        t3=((double)edcf_recomp>threshold?1.0:0.0);
+        t3=((double)edcf_recomp_p>threshold?1.0:0.0);
     }
 
     return t1+t2+t3;
@@ -140117,6 +140990,17 @@ static double edcf_phi_v2()
 // Returns true if the neighbourhood-window threshold was met this call
 // (i.e. the alert is confirmed and should proceed to detection/blockchain
 // logging), false if the cascade was cryptographically suppressed.
+// Side channel for the caller of edcf_on_packet() to read the last V2
+// homomorphic-mitigation verdict without changing edcf_on_packet()'s
+// signature (it has dozens of call sites for every packet type). Safe as
+// a single static slot because NS-3 is single-threaded and
+// edcf_inject_v2_alert() reads it synchronously, immediately after the
+// edcf_on_packet(atk_id,"FAKE_ALERT",...) call that sets it — no other
+// event can interleave between the two in a single-threaded simulator.
+// Defaults to true (forward) so non-ALERT/FAKE_ALERT packet types, which
+// never touch this variable, don't accidentally suppress anything.
+static bool g_v2_last_confirmed = true;
+
 static bool edcf_v2_homomorphic_mitigation(uint32_t node_id, bool is_genuine_vote)
 {
     // Step 1 (Eq 3.51) — anonymous group signature over a minimal alert
@@ -140294,19 +141178,137 @@ static double edcf_phi_v3(uint32_t node_id, double px, double py)
         // Per-node cosine is exact Eq 3.15; wtopo fallback fires when history insufficient.
         t1 = (tau_dir < EDCF_TAU_TH ? 1.0 : 0.0);
     } else {
-        // Insufficient position history (< 3 points) — use network-level wtopo proxy
-        // This is the "network-level directional consistency proxy" from report §3.3.3:
-        // wrong topology reports accumulate when attacker feeds false positions,
-        // producing the same effect as low τ^dir at the network level.
-        t1 = (edcf_wtopo > EDCF_ALPHA2 ? 1.0 : 0.0);
+        // Insufficient position history (< 3 points) — no independent Term 1
+        // signal available. This USED TO fall back to the same
+        // edcf_wtopo_p > EDCF_ALPHA2 check as Term 3 below — a network-wide,
+        // non-per-node counter — which double-counted one signal as two
+        // independent terms. At the old Θ^V3=1.5 that duplicate pair alone
+        // (t1+t3=2.0) was already enough to cross threshold by itself; after
+        // recalibrating Θ^V3 down to 0.9 for the OR-across-terms fix, EITHER
+        // term alone now exceeds threshold, so any node lacking position
+        // history got flagged the instant edcf_wtopo_p ticked over
+        // EDCF_ALPHA2 — a blanket network-wide trigger, not per-node
+        // evidence, which is what caused FP=1850 (100% of benign traffic)
+        // from Cycle 3 onward. Term 3 already captures this signal; Term 1
+        // contributes nothing extra when no per-node position evidence exists.
+        t1 = 0.0;
     }
 
-    // Term 3: 𝟙[λ^FM(t) > λ̄^FM + α₄σ_FM] — elevated FlowMod rate
-    // wtopo_p is the per-cycle wrong-topology count — captures the
-    // unnecessary FlowMod rate caused by falsified mobility data
-    double t3=(edcf_wtopo_p>EDCF_ALPHA2?1.0:0.0);
+    // Term 3: 𝟙[λ^FM(t) > λ̄^FM + α₄σ_FM] — elevated PER-NODE FlowMod/WRONG_TOPO
+    // rate (Eq 3.20). FIX #1: previously used the network-wide edcf_wtopo_p —
+    // the exact same global counter Term 1's fallback used above — so once 15
+    // attackers collectively pushed it past EDCF_ALPHA2, Term 3 alone
+    // (t3=1.0 > Θ^V3=0.9) flagged EVERY node queried, benign or not, with
+    // zero node-specific evidence.
+    // FIX #2: the per-node replacement then used edcf_fm_per_node[], which
+    // only increments on pkt_type=="FLOWMOD"||"WRONG_FM" — but V3 attackers
+    // (edcf_inject_v3_trace) NEVER send those packet types, only FAKE_TRACE
+    // and WRONG_TOPO. So edcf_fm_per_node[] stayed 0 for every V3 attacker
+    // for the entire run, permanently zeroing Term 3 and leaving Term 1 (0 by
+    // design for straight-line movement) and Term 2 (ζ, which converges to 0
+    // once dead-reckoning learns the attacker's constant velocity) as the
+    // only signals — both structurally blind to this attack, producing the
+    // observed 0% detection rate. edcf_wtopo_per_node[] tracks the actual
+    // per-node WRONG_TOPO surge this term is meant to measure.
+    double t3 = 0.0;
+    {
+        int _vi3 = (int)node_id - EDCF_VEHICLE_BASE;
+        if (_vi3 >= 0 && _vi3 < 210)
+            t3 = (edcf_wtopo_per_node[_vi3] > EDCF_ALPHA2 ? 1.0 : 0.0);
+    }
 
     return t1+t2+t3;
+}
+
+// Network-level Φ^V3 — averages the REAL per-node τ^dir/ζ signal across
+// every currently-tracked vehicle, matching the style of edcf_phi_v1()/
+// edcf_phi_v2() (genuine network aggregates, not a single proxy node).
+//
+// Deliberately does NOT call edcf_phi_v3() itself for this: that function
+// has side effects (it updates edcf_last_x/y/vx/vy/t2/pos_init and the
+// pos_x/pos_y circular history — the same state the real per-packet
+// detector in edcf_on_packet() relies on for dead-reckoning). Calling it
+// again here just to read a diagnostic value would inject a synthetic
+// "packet" at CSV-write time for every vehicle, desyncing the dt used by
+// the next REAL packet's ζ_i calculation. So Terms 1+2 are recomputed
+// read-only from the position history edcf_phi_v3() already wrote during
+// real packet processing (same formulas, same EDCF_TAU_TH/EDCF_ZETA_TH
+// thresholds); Term 3 is unchanged (already a genuine network-level
+// counter, edcf_wtopo_p).
+//
+// Replaces the previous placeholder:
+//   edcf_phi_v3((uint32_t)EDCF_VEHICLE_BASE, 0.0, 0.0)
+// which fed a single fixed node a constant (0.0,0.0) position on every
+// call — Term 2 (ζ) always computed distance-to-self and returned exactly
+// 0, and Term 1 (τ^dir) degenerated to its n_pairs==0 fallback (1.0, i.e.
+// "no attack") for the same reason — so phi_v3_net was structurally
+// guaranteed to read ≈0 regardless of real attacker behaviour.
+static double edcf_phi_v3_network_avg()
+{
+    double sum = 0.0;
+    uint32_t n = 0;
+    double t_now = Simulator::Now().GetSeconds();
+
+    for(uint32_t i = 0; i < N_Vehicles; i++){
+        uint32_t node_id = EDCF_VEHICLE_BASE + i;
+        if(node_id >= 210) continue;
+
+        // Term 3 (read-only): per-node WRONG_TOPO rate — matches the fix in
+        // edcf_phi_v3() above (must stay in sync). i is already the v_idx
+        // edcf_wtopo_per_node[] is indexed by.
+        double t3 = (edcf_wtopo_per_node[i] > EDCF_ALPHA2 ? 1.0 : 0.0);
+
+        // Term 1 (read-only): τ^dir_i from this node's real position history
+        double t1 = 0.0;
+        if(edcf_pos_cnt[node_id] >= 3){
+            double cos_sum = 0.0; int n_pairs = 0;
+            int cnt = edcf_pos_cnt[node_id];
+            for(int k = 0; k < cnt-2; k++){
+                int i0 = (edcf_pos_idx[node_id]-cnt+k  +EDCF_K_POS)%EDCF_K_POS;
+                int i1 = (edcf_pos_idx[node_id]-cnt+k+1+EDCF_K_POS)%EDCF_K_POS;
+                int i2 = (edcf_pos_idx[node_id]-cnt+k+2+EDCF_K_POS)%EDCF_K_POS;
+                double dx1=edcf_pos_x[node_id][i1]-edcf_pos_x[node_id][i0];
+                double dy1=edcf_pos_y[node_id][i1]-edcf_pos_y[node_id][i0];
+                double dx2=edcf_pos_x[node_id][i2]-edcf_pos_x[node_id][i1];
+                double dy2=edcf_pos_y[node_id][i2]-edcf_pos_y[node_id][i1];
+                double m1=std::sqrt(dx1*dx1+dy1*dy1), m2=std::sqrt(dx2*dx2+dy2*dy2);
+                if(m1>0.01 && m2>0.01){
+                    double cosang=(dx1*dx2+dy1*dy2)/(m1*m2);
+                    if(cosang> 1.0) cosang= 1.0;
+                    if(cosang<-1.0) cosang=-1.0;
+                    cos_sum += cosang;
+                    n_pairs++;
+                }
+            }
+            double tau_dir = (n_pairs>0) ? (cos_sum/n_pairs) : 1.0;
+            t1 = (tau_dir < EDCF_TAU_TH ? 1.0 : 0.0);
+        } else {
+            // No independent Term 1 signal without position history — matches
+            // the de-duplication fix in edcf_phi_v3() above (this is a
+            // read-only mirror of that formula and must stay in sync).
+            t1 = 0.0;
+        }
+
+        // Term 2 (read-only): ζ_i via the same dead-reckoning helper the
+        // AI mitigation bridge uses — no state mutation. Needs the node's
+        // actual live position (not just stored last_x/last_vx) to diff
+        // against the dead-reckoning prediction, same as the AI bridge.
+        double _px = edcf_last_x[node_id], _py = edcf_last_y[node_id];
+        Ptr<Node> _nd3 = NodeList::GetNode(node_id);
+        if (_nd3) {
+            Ptr<MobilityModel> _mob3 = _nd3->GetObject<MobilityModel>();
+            if (_mob3) {
+                Vector _pos3 = _mob3->GetPosition();
+                _px = _pos3.x; _py = _pos3.y;
+            }
+        }
+        double zeta = edcf_compute_zeta_for_node(node_id, t_now, _px, _py);
+        double t2 = (zeta > EDCF_ZETA_TH ? 1.0 : 0.0);
+
+        sum += (t1 + t2 + t3);
+        n++;
+    }
+    return (n > 0) ? sum / (double)n : 0.0;
 }
 
 // ============================================================
@@ -140483,10 +141485,11 @@ static void write_csv_row(std::fstream& f,
         double _etot = (double)(edcf_wifi_flood+edcf_wifi_legit);
         double _eta  = (_etot>0) ? (double)edcf_wifi_flood/_etot : 0.0;
         // network-level phi scores
-        double _pv1 = edcf_phi_v1();
+        double _pv1 = edcf_phi_v1_network_avg();
         double _pv2 = edcf_phi_v2();
-        // phi_v3 uses centre position as network-level proxy
-        double _pv3 = edcf_phi_v3((uint32_t)EDCF_VEHICLE_BASE, 0.0, 0.0);
+        // phi_v3_net: real per-node τ^dir/ζ averaged across all vehicles
+        // (read-only — does not disturb edcf_phi_v3()'s per-packet state)
+        double _pv3 = edcf_phi_v3_network_avg();
         f <<std::fixed<<std::setprecision(6)
           <<_lbl       <<","   // label
           <<_det       <<","   // detected
@@ -140500,6 +141503,44 @@ static void write_csv_row(std::fstream& f,
           <<_pv2       <<","   // phi_v2_net
           <<_pv3       <<","   // phi_v3_net
           <<N_Vehicles  <<"\n";// n_vehicles_active
+
+        // ── Cache this window for the AI real-time bridge ────────
+        // Only EDCF-Shield's own CYCLE row (the "our method" per-window
+        // snapshot) — not CUMULATIVE, not the baselines — feeds the AI's
+        // window telemetry, since that's the row the LLM prompt template
+        // (build_log_text() in edcf_inference_api.py) mirrors.
+        if (method=="EDCF-Shield" && row_type=="CYCLE") {
+            g_last_pem_window.valid       = true;
+            g_last_pem_window.cycle       = cycle;
+            g_last_pem_window.atk_count   = atk_count;
+            g_last_pem_window.scenario    = scenario;
+            g_last_pem_window.label       = _lbl;
+            g_last_pem_window.TP = TP; g_last_pem_window.TN = TN;
+            g_last_pem_window.FP = FP; g_last_pem_window.FN = FN;
+            g_last_pem_window.Accuracy    = acc;
+            g_last_pem_window.MCC         = mcc;
+            g_last_pem_window.F1          = f1;
+            g_last_pem_window.Precision   = prec;
+            g_last_pem_window.Recall      = rec;
+            g_last_pem_window.DetRate_pct = det_rate;
+            g_last_pem_window.PDR_pct     = pdr*100.0;
+            g_last_pem_window.ch_load_pct = ch*100.0;
+            g_last_pem_window.CFSR        = _ext.cfsr;
+            g_last_pem_window.PAIR        = _ext.pair;
+            g_last_pem_window.CDR         = _ext.cdr;
+            g_last_pem_window.MCR         = _ext.mcr;
+            g_last_pem_window.CCR         = _ext.ccr;
+            g_last_pem_window.EML_trusted_ms = _ext.eml_trusted_ms;
+            g_last_pem_window.detected       = _det;
+            g_last_pem_window.hmac_valid_pct = _hmac_pct;
+            g_last_pem_window.delta_tm_rate  = _dtm;
+            g_last_pem_window.gamma          = _gamma;
+            g_last_pem_window.eps_topo       = _eps;
+            g_last_pem_window.eta_c          = _eta;
+            g_last_pem_window.phi_v1_net     = _pv1;
+            g_last_pem_window.phi_v2_net     = _pv2;
+            g_last_pem_window.phi_v3_net     = _pv3;
+        }
     }
 }
 
@@ -140688,6 +141729,67 @@ static bool edcf_is_attack_packet(uint32_t node_id)
 //   last_vx, last_vy,         ← velocity components for edge features
 //   pos_x, pos_y              ← last known position for edge construction
 // ============================================================
+// ── Real definition of edcf_snapshot_all_node_features() ────────────
+// Mirrors pem_write_node_features()'s zscore_v1_i/fanout_i/bcn_rate_i
+// math exactly (same mean/std beacon-rate normalisation across all
+// active vehicles), reuses the shared edcf_compute_zeta_for_node() for
+// ζ_i, and reads live position off the NS-3 mobility model per node —
+// producing the SAME 7-feature, ~200-node graph snapshot the TGNN
+// (edcf_tgnn_best.pt) was trained on, for every AI query, not just a
+// single isolated node.
+static std::vector<EdcfNodeFeat> edcf_snapshot_all_node_features()
+{
+    std::vector<EdcfNodeFeat> out;
+    out.reserve(N_Vehicles);
+
+    double t     = Simulator::Now().GetSeconds();
+    double win_s = t - pem_table_miss_window_start;
+    if (win_s <= 0.0) win_s = 1.0;
+
+    double rates[210];
+    double rate_sum = 0.0;
+    for (uint32_t i = 0; i < N_Vehicles; i++) {
+        rates[i] = (double)edcf_bcn_per_node[i] / win_s;
+        rate_sum += rates[i];
+    }
+    double mean_rate = rate_sum / std::max((double)N_Vehicles, 1.0);
+    double var_sum = 0.0;
+    for (uint32_t i = 0; i < N_Vehicles; i++)
+        var_sum += (rates[i]-mean_rate)*(rates[i]-mean_rate);
+    double std_rate = std::sqrt(var_sum / std::max((double)N_Vehicles, 1.0));
+
+    for (uint32_t i = 0; i < N_Vehicles; i++) {
+        uint32_t node_id = (uint32_t)EDCF_VEHICLE_BASE + i;
+        EdcfNodeFeat nf{};
+        nf.node_id     = node_id;
+        nf.bcn_rate_i  = rates[i];
+        nf.zscore_v1_i = (std_rate > 0.001) ? (rates[i]-mean_rate)/std_rate : 0.0;
+        nf.alert_in_i  = (double)edcf_alert_in_per_node[i];
+        nf.alert_out_i = (double)edcf_alert_out_per_node[i];
+        nf.fanout_i    = (edcf_alert_in_per_node[i] > 0)
+                          ? (double)edcf_alert_out_per_node[i] / edcf_alert_in_per_node[i]
+                          : 0.0;
+        nf.s_bc        = bc_get_reputation(node_id);
+
+        nf.pos_x = 0.0; nf.pos_y = 0.0;
+        Ptr<Node> _nd = NodeList::GetNode(node_id);
+        if (_nd) {
+            Ptr<MobilityModel> _mob = _nd->GetObject<MobilityModel>();
+            if (_mob) {
+                Vector _pos = _mob->GetPosition();
+                nf.pos_x = _pos.x; nf.pos_y = _pos.y;
+            }
+        }
+        // Live position must be read before ζ so it can be diffed against
+        // the dead-reckoning prediction, matching edcf_phi_v3()'s formula —
+        // previously this compared last_x against itself and always
+        // returned dt*|v| regardless of the actual reported trajectory.
+        nf.zeta        = edcf_compute_zeta_for_node(node_id, t, nf.pos_x, nf.pos_y);
+        out.push_back(nf);
+    }
+    return out;
+}
+
 static void pem_write_node_features()
 {
     // ============================================================
@@ -140698,10 +141800,53 @@ static void pem_write_node_features()
     // Plus: graph-edge helpers (pos, velocity, ctrl_id, rsu_id)
     // Plus: training helpers (detected, hmac_valid, label)
     // ============================================================
+    // Called every data_transmission_period (default 1.0s, via
+    // calculate_performance_evaluation_metrics()) but edcf_cycle only
+    // advances every 2.0s (edcf_pem_write()'s separate schedule) — so
+    // without this guard every cycle value gets written 2-3x over
+    // (400-600 rows/cycle instead of 200), duplicating the whole
+    // per-vehicle table under an unchanged cycle number. Guard: skip if
+    // this cycle was already written.
+    static int32_t s_last_written_cycle = -1;
+    if((int32_t)edcf_cycle == s_last_written_cycle) return;
+    s_last_written_cycle = (int32_t)edcf_cycle;
+
     static const std::string path = "./scratch/tgnn_node_features.csv";
     bool need_hdr = !pem_file_exists(path);
     std::fstream f(path, std::ios::out | std::ios::app);
     if(!f.is_open()) return;
+
+    // Sir diagnostic (2026-07-27): beacon-interval regularity beta_i,
+    // separate small log (not the shared tgnn_node_features.csv path,
+    // same reasoning as edcf_novelty_frac_log.csv — a diagnostic-only
+    // measurement shouldn't perturb the existing CSV column layout).
+    // One row per vehicle-window pair with >=3 beacons this window.
+    static const std::string beta_path = "./scratch/edcf_v1_beacon_regularity.csv";
+    bool need_hdr_beta = !pem_file_exists(beta_path);
+    std::fstream fbeta(beta_path, std::ios::out | std::ios::app);
+    if(fbeta.is_open() && need_hdr_beta)
+        fbeta << "scenario,atk_count,cycle,time_s,node_id,is_attacker,beacon_count,n_intervals,beta_i\n";
+
+    // Category A4 (Sir 2026-07-27 v3): Tier 1 verification numbers for the
+    // rotating fake-MAC external attacker model. row_type=ATTACKER: one row
+    // per external attacker vehicle per cycle (ground-truth table-miss/
+    // fake-beacon count this window, ≥1 expected). row_type=NETWORK: one row
+    // per cycle with the network-level fake-identity fraction
+    // rho_new_identity_diag = fake_mac_count/(fake_mac_count+N_Vehicles) --
+    // now the LIVE edcf_phi_v1() Term 2 value too (Tier 2 D2). term1_fraction/
+    // term3_fraction (Tier 2 D5) are the matching O(t)-based fractions for
+    // Term 1/Term 3; phi_v1_composite_net = term1_fraction+rho_new_identity+
+    // term3_fraction is the network-level composite for verification-run
+    // reporting only (does not drive per-packet sig_flag, which uses the
+    // real per-node edcf_phi_v1(node_id) call).
+    static const std::string ext_diag_path = "./scratch/edcf_v1_ext_attack_diag.csv";
+    bool need_hdr_ext = !pem_file_exists(ext_diag_path);
+    std::fstream fext(ext_diag_path, std::ios::out | std::ios::app);
+    if(fext.is_open() && need_hdr_ext)
+        fext << "scenario,atk_count,cycle,time_s,row_type,node_id,"
+                "fake_beacons_this_window,network_fake_mac_count,"
+                "network_real_vehicle_count,rho_new_identity_diag,"
+                "term1_fraction,term3_fraction,phi_v1_composite_net\n";
 
     if(need_hdr){
         f << "scenario,atk_count,cycle,time_s,"
@@ -140721,6 +141866,7 @@ static void pem_write_node_features()
           << "alert_in_i,"     // A_i^in received alerts
           << "alert_out_i,"    // A_i^out forwarded alerts
           << "fm_count_i,"     // FlowMod count this node
+          << "xi_tm_i,"        // ξ_i^TM per-vehicle table-miss z-score, Eq v1_tm (Task 1.1)
           // ── Training helpers ──────────────────────────────
           << "detected,"       // was this node detected as attacker (ŷ_i^v)
           << "hmac_valid,"     // HMAC verification passed (0=fail=attacker caught)
@@ -140757,11 +141903,40 @@ static void pem_write_node_features()
         else win_class="V3";
     }
 
+    // Task 1.2: lazy-init the zone last-seen table (sentinel -1.0 = never
+    // visited) on first call, and reset this cycle's novelty accumulator.
+    if(!edcf_zone_table_init){
+        for(uint32_t vi=0; vi<210; vi++){
+            for(uint32_t z=0; z<64; z++)
+                edcf_zone_last_seen[vi][z] = -1.0;
+            edcf_zone_current[vi] = -1; // Category A2: no handover baseline yet
+        }
+        edcf_zone_table_init = true;
+    }
+    uint32_t edcf_zone_novel_count_this_cycle = 0;
+
+    // Tier 2 D5 (Sir 2026-07-28): O(t)-based Term1/Term3 network-level
+    // fraction diagnostics -- counts of REAL vehicles this cycle whose live
+    // Term1 (Poisson, D1) / Term3 (binary table-miss, D3) flags fire.
+    // Combined with the fake-MAC count below (every fake MAC deterministically
+    // fires both terms, by construction -- see the comment at the NETWORK
+    // row write site), this gives the genuine O(t)-denominator fractions Sir
+    // asked to be confirmed/reported, without adding any per-fake-MAC state.
+    uint32_t edcf_term1_real_flagged_this_cycle = 0;
+    uint32_t edcf_term3_real_flagged_this_cycle = 0;
+
     // ── Per-vehicle rows ──────────────────────────────────────────
     for(uint32_t i = 0; i < N_Vehicles; i++){
         uint32_t node_id = (uint32_t)EDCF_VEHICLE_BASE + i;
         bool is_atk = edcf_is_attack_packet(node_id);
         std::string label = (is_atk && edcf_atk_count > 0) ? win_class : "benign";
+
+        // D5: tally this vehicle's live Term1/Term3 flags (same formulas
+        // edcf_phi_v1() itself uses) into the network-level O(t) fractions.
+        if(std::fabs(edcf_poisson_v1_score(node_id)) > EDCF_ALPHA1)
+            edcf_term1_real_flagged_this_cycle++;
+        if((double)edcf_tm_per_node[i] >= EDCF_ALPHA2_V1_TM)
+            edcf_term3_real_flagged_this_cycle++;
 
         // ── Feature 4: s_BC ──────────────────────────────────────
         double s_bc = (node_id < 300) ? bc_rep_cache[node_id] : 1.0;
@@ -140769,10 +141944,17 @@ static void pem_write_node_features()
         // ── Feature 5: r_i(t) per-node beacon rate ───────────────
         double bcn_rate_i = rates[i];
 
-        // ── Feature 1: Φ^V1_i — z-score S_i^(1) Eq v1_zscore ────
-        double zscore_i   = (std_rate > 0.001)
-                            ? (bcn_rate_i - mean_rate) / std_rate : 0.0;
-        double phi_v1_i   = (zscore_i > 2.0 ? 1.0 : 0.0); // α₁=2.0
+        // ── Feature 1: S_i^(1,Poisson) — Eq v1_zscore (Sir 2026-07-30) ──
+        // TGNN retrain spec names this feature explicitly as the Poisson
+        // dispersion score, matching what the live real-time detector
+        // (edcf_phi_v1(), Tier 2 D1) actually uses for Term 1 today.
+        // Previously this column shared edcf_robust_v1_zscore() (Tier 1
+        // Task 1.3's median/MAD z-score) instead -- correct for Tier 2's
+        // rule-fix-only scope at the time ("no TGNN parts"), but not what
+        // the retrain's named feature vector calls for. Swapped so the
+        // training CSV matches both Sir's spec and the live detector.
+        double zscore_i   = edcf_poisson_v1_score(node_id);
+        double phi_v1_i   = (zscore_i > EDCF_ALPHA1 ? 1.0 : 0.0);
 
         // ── Feature 2: Φ^V2_i — fan-out ratio φ_i Eq v2_fanout ──
         double fanout_i   = (edcf_alert_in_per_node[i] > 0)
@@ -140806,28 +141988,12 @@ static void pem_write_node_features()
             if(n_pairs>0) tau_dir=std::max(-1.0,std::min(1.0,cos_sum/n_pairs));
         }
 
-        // ── Feature 7: ζ_i — trajectory inconsistency (m) ────────
-        double zeta = 0.0;
-        if(nid < 210 && edcf_pos_init[nid]){
-            double dt = t - edcf_last_t2[nid];
-            if(dt > 0.001){
-                double pred_x = edcf_last_x[nid] + edcf_last_vx[nid]*dt;
-                double pred_y = edcf_last_y[nid] + edcf_last_vy[nid]*dt;
-                double dx = edcf_last_x[nid] - pred_x;
-                double dy = edcf_last_y[nid] - pred_y;
-                zeta = std::sqrt(dx*dx+dy*dy);
-            }
-        }
-
-        // ── Feature 3: Φ^V3_i — per-node composite V3 score ──────
-        double phi_v3_i = (tau_dir < 0.5  /*EDCF_TAU_TH*/  ? 1.0 : 0.0)
-                        + (zeta    > 20.0 /*EDCF_ZETA_TH*/ ? 1.0 : 0.0)
-                        + (edcf_fm_per_node[i] > 2 ? 1.0 : 0.0);
-
         // ── Graph helpers ─────────────────────────────────────────
         // Read position directly from NS-3 mobility model — works for
         // ALL scenarios (v1/v2/v3). edcf_last_x[] is only populated
         // for v3 scenarios inside edcf_phi_v3(), so it is wrong for v1/v2.
+        // Moved ABOVE Feature 7 (ζ_i) so the real current position (px,py)
+        // is available there -- see fix note below.
         double px = 0.0, py = 0.0, pvx = 0.0, pvy = 0.0;
         {
             Ptr<Node> _nd = NodeList::GetNode(node_id);
@@ -140842,6 +142008,43 @@ static void pem_write_node_features()
             }
         }
 
+        // ── Feature 7: ζ_i — trajectory inconsistency (m) ────────
+        // FIX (Claude code-audit finding, 2026-07-30, not a Sir-specified
+        // item): was comparing edcf_last_x/y[nid] (the OLD stored position)
+        // against a prediction built from that SAME old position -- dx
+        // algebraically reduced to -edcf_last_vx*dt, i.e. this measured raw
+        // speed*dt, not prediction error, and never actually looked at
+        // where the vehicle really is now. edcf_phi_v3()'s live Term 2
+        // compares the prediction against the CURRENT reported position
+        // (px,py) instead -- mirrored here so this column matches the real
+        // dead-reckoning residual ζ_i the equation defines, consistent
+        // with the live detector. Training-data-export only; does not
+        // touch edcf_phi_v3()/edcf_classify() or any already-reported MCC.
+        double zeta = 0.0;
+        if(nid < 210 && edcf_pos_init[nid]){
+            double dt = t - edcf_last_t2[nid];
+            if(dt > 0.001){
+                double pred_x = edcf_last_x[nid] + edcf_last_vx[nid]*dt;
+                double pred_y = edcf_last_y[nid] + edcf_last_vy[nid]*dt;
+                double dx = px - pred_x;
+                double dy = py - pred_y;
+                zeta = std::sqrt(dx*dx+dy*dy);
+            }
+        }
+
+        // ── Feature 3: Φ^V3_i — per-node composite V3 score ──────
+        // FIX (Claude code-audit finding, 2026-07-30, not a Sir-specified
+        // item): Term 3 was edcf_fm_per_node[i] > 2 -- always 0 for V3
+        // attackers, since edcf_inject_v3_trace() only ever sends
+        // FAKE_TRACE/WRONG_TOPO, never FLOWMOD/WRONG_FM (the only packet
+        // types that increment edcf_fm_per_node[]). This is the exact
+        // same dead-term bug the live edcf_phi_v3() already found and
+        // fixed by switching to edcf_wtopo_per_node[] instead -- this
+        // training-CSV copy was never updated to match. Mirrored here.
+        double phi_v3_i = (tau_dir < 0.5  /*EDCF_TAU_TH*/  ? 1.0 : 0.0)
+                        + (zeta    > 20.0 /*EDCF_ZETA_TH*/ ? 1.0 : 0.0)
+                        + (edcf_wtopo_per_node[i] > 2 ? 1.0 : 0.0);
+
         // ctrl_id: static round-robin assignment (v_idx % 4)
         uint32_t ctrl_id = i % 4;
 
@@ -140851,6 +142054,37 @@ static void pem_write_node_features()
         if(rsu_col > 7) rsu_col = 7;
         if(rsu_row > 7) rsu_row = 7;
         uint32_t rsu_id = rsu_row * 8 + rsu_col;
+
+        // Task 1.2 (Eq v1_novelty): is this vehicle's CURRENT RSU zone
+        // absent from its own visit history within the last T_mem
+        // seconds? If so it counts toward this cycle's network-level
+        // novelty rate below, then its visit to this zone is recorded.
+        if(i < 210){
+            double last_t = edcf_zone_last_seen[i][rsu_id];
+            if(last_t < 0.0 || (t - last_t) > edcf_t_mem)
+                edcf_zone_novel_count_this_cycle++;
+            edcf_zone_last_seen[i][rsu_id] = t;
+        }
+
+        // Category A2 (Sir 2026-07-27 fix): RSU handover event -- the
+        // v_i(t)/r_c term of eq:mob_rate, previously entirely absent (only
+        // the periodic 1/T_b beacon term existed). Fires when this
+        // vehicle's RSU zone differs from what it was at the last PEM
+        // cycle (not on the first observation, which only establishes the
+        // baseline zone). Feeds the SAME legitimate-event-rate counters
+        // Term 1's z-score and the beta_i CV diagnostic already read
+        // (edcf_bcn_per_node/edcf_bcn_ts) -- eq:mob_rate models handover +
+        // periodic beaconing as one combined legitimate event rate, not
+        // two separate rates, so a faster-moving vehicle now naturally
+        // shows a higher combined rate than a slow one.
+        if(i < 210){
+            if(edcf_zone_current[i] >= 0 && edcf_zone_current[i] != (int)rsu_id){
+                edcf_bcn_per_node[i]++;
+                if(edcf_bcn_ts_cnt[i] < EDCF_BCN_TS_BUF)
+                    edcf_bcn_ts[i][edcf_bcn_ts_cnt[i]++] = t;
+            }
+            edcf_zone_current[i] = (int)rsu_id;
+        }
 
         // ── Training helpers ──────────────────────────────────────
         int detected   = edcf_detected_per_node[i]  ? 1 : 0;
@@ -140869,12 +142103,98 @@ static void pem_write_node_features()
           << edcf_alert_in_per_node[i]  << ","
           << edcf_alert_out_per_node[i] << ","
           << edcf_fm_per_node[i]        << ","
+          << edcf_robust_v1_tm_zscore(node_id) << ","
           << detected    << "," << hmac_valid  << ","
           << std::setprecision(3)
           << px  << "," << py  << ","
           << pvx << "," << pvy << ","
           << ctrl_id << "," << rsu_id << "\n";
+
+        // Sir diagnostic (2026-07-27): beta_i row, only for vehicles with
+        // >=3 beacons this window (n_intervals>=2), matching Sir's exact
+        // criterion — vehicles with fewer beacons are silently skipped,
+        // not written as 0.
+        if(fbeta.is_open()){
+            int n_intervals = 0;
+            double beta_i = edcf_beacon_interval_beta(node_id, n_intervals);
+            if(n_intervals >= 2){
+                fbeta << edcf_scenario << "," << edcf_atk_count << ","
+                      << edcf_cycle << "," << std::fixed << std::setprecision(3) << t << ","
+                      << node_id << "," << (is_atk?1:0) << ","
+                      << edcf_bcn_ts_cnt[i] << "," << n_intervals << ","
+                      << std::setprecision(6) << beta_i << "\n";
+            }
+        }
+
+        // Category A4 (Sir 2026-07-27 v3) item 1: per-external-attacker
+        // ground-truth table-miss/fake-beacon count this window. Uses the
+        // SAME edcf_tm_per_node[] counter Term 3 already maintains -- every
+        // fake-MAC beacon this attacker sent this window increments it once
+        // (see edcf_inject_v1_beacon()), so this is exactly "how many fake
+        // beacons (=table-misses) did this real attacker vehicle cause".
+        if(fext.is_open() && is_atk && edcf_has_key==0 && i<210){
+            fext << edcf_scenario << "," << edcf_atk_count << ","
+                 << edcf_cycle << "," << std::fixed << std::setprecision(3) << t << ","
+                 << "ATTACKER," << node_id << ","
+                 << edcf_tm_per_node[i] << ",,,,,\n"; // 6 empty trailing cols (schema grew by 3 for D5)
+        }
     }
+
+    // Category A4 (Sir 2026-07-27 v3) items 2/3, now LIVE via Tier 2 D2
+    // (Sir 2026-07-28): network-level fake-identity fraction this cycle --
+    // rho_new_identity = fake_mac_count / (fake_mac_count + N_Vehicles).
+    // Expected ≈0 at AtkCnt=0 (no fake MACs possible with zero attackers)
+    // and >>0, proportional to attacker count, once external attackers are
+    // present. Computed unconditionally (not gated on the diagnostic CSV
+    // being open) and published to edcf_rho_new_identity for edcf_phi_v1()'s
+    // live Term 2 to read.
+    double edcf_denom_ot = (double)edcf_ext_fake_mac_count_p + (double)N_Vehicles;
+    double rho_new_identity_diag = (edcf_denom_ot > 0.0)
+        ? (double)edcf_ext_fake_mac_count_p / edcf_denom_ot : 0.0;
+    edcf_rho_new_identity = rho_new_identity_diag;
+
+    // Tier 2 D5 (Sir 2026-07-28): Term1_fraction / Term3_fraction over the
+    // FULL observation set O(t) = N_Vehicles (real) + edcf_ext_fake_mac_count_p
+    // (fake MACs this window). Every fake MAC is, by construction of the
+    // rotating-identity model (edcf_inject_v1_beacon(): a brand-new,
+    // never-repeated MAC on every beacon), observed with count_i=1 in this
+    // window -- so its Poisson score is the fixed constant
+    // (1-mu)/sqrt(mu) = (1-10)/sqrt(10) ≈ -2.846, unconditionally beyond
+    // alpha1=2.0 -- and it caused exactly one table-miss (itself), so
+    // lambda_i^TM=1 unconditionally clears alpha2=1 too. Both terms are
+    // therefore 100% flagged for every fake-MAC entry in O(t) without
+    // needing per-MAC state; only the REAL-vehicle flag counts (tallied in
+    // the per-vehicle loop above) need to be added in.
+    double term1_fraction = (edcf_denom_ot > 0.0)
+        ? ((double)edcf_term1_real_flagged_this_cycle + (double)edcf_ext_fake_mac_count_p) / edcf_denom_ot
+        : 0.0;
+    double term3_fraction = (edcf_denom_ot > 0.0)
+        ? ((double)edcf_term3_real_flagged_this_cycle + (double)edcf_ext_fake_mac_count_p) / edcf_denom_ot
+        : 0.0;
+    double phi_v1_composite_net = term1_fraction + edcf_rho_new_identity + term3_fraction;
+
+    // Tier 2 Bug 2 fix (Sir 2026-07-28): publish this cycle's Stage 1
+    // network-level Phi^V1 for edcf_phi_v1()'s live Stage 1 gate to read
+    // (identical value to phi_v1_composite_net above -- same formula, same
+    // computation, just also stored globally for the live detector).
+    edcf_phi_v1_stage1_net = phi_v1_composite_net;
+
+    if(fext.is_open()){
+        fext << edcf_scenario << "," << edcf_atk_count << ","
+             << edcf_cycle << "," << std::fixed << std::setprecision(3) << t << ","
+             << "NETWORK,0,,"
+             << edcf_ext_fake_mac_count_p << "," << N_Vehicles << ","
+             << std::setprecision(6) << rho_new_identity_diag << ","
+             << term1_fraction << "," << term3_fraction << "," << phi_v1_composite_net << "\n";
+    }
+
+    // Task 1.2: publish this cycle's network-level RSU-zone novelty rate
+    // for edcf_phi_v1()'s Term 2 to read during the NEXT cycle's
+    // real-time detection decisions (this cycle's packets already used
+    // whatever was computed at the end of the previous cycle).
+    edcf_rho_new_zone = (double)edcf_zone_novel_count_this_cycle
+                       / std::max((double)N_Vehicles, 1.0);
+
     f.close();
 }
 
@@ -140888,7 +142208,20 @@ static void edcf_classify(uint32_t node_id,bool is_atk,
 {
     // Lightweight detection: signature score OR HMAC failure (Section 3.3.4)
     // caught = (Phi^Vk >= Theta^Vk) || !hmac_ok
-    bool caught = sig_flag || !hmac_ok;
+    // Full Mode (M=1) additionally counts a packet as caught if its source
+    // node already carries an active AI-mitigation drop verdict
+    // (m_blockedNodes, populated by edcf_apply_ai_mitigation()/
+    // edcf_check_ai_blacklist() from a PRIOR TGNN+LLM inference on this
+    // node — the async AI call for THIS packet hasn't resolved yet, so
+    // this reflects the node's standing verdict, exactly matching what the
+    // Rx() WiFi firewall (routing.cc ~119980) already enforces). Previously
+    // m_blockedNodes only gated packet delivery and never touched this
+    // confusion matrix, so Full Mode's AI detections (or false alarms)
+    // were structurally invisible to TP/TN/FP/FN/MCC no matter how the
+    // TGNN+LLM performed -- Lightweight and Full always scored identically.
+    bool ai_blocked = (edcf_full_mode != 0) &&
+                       (m_blockedNodes.find(std::to_string(node_id)) != m_blockedNodes.end());
+    bool caught = sig_flag || !hmac_ok || ai_blocked;
 
     if(is_atk){
         // Attack packet
@@ -141007,6 +142340,33 @@ static void edcf_on_packet(uint32_t node_id,
     double sim_ts = Simulator::Now().GetSeconds();
     bc_submit_vehicle_tx(node_id, pkt_type, msg, tag, sim_ts);
 
+    // ── E4 rho_novelty(t) — Eq 4.1 ────────────────────────────
+    // s_e^BC(t) = empty  <=>  no blockchain submission from this source
+    // within the last T_mem seconds (edcf_bc_last_seen, just updated by
+    // bc_submit_vehicle_tx() above conceptually -- recorded here from the
+    // PRE-update value so this event's own submission doesn't count as its
+    // own history). Measured for every attack event; edcf_rho_novelty, if
+    // set (>=0), overrides the measured value with a direct Bernoulli draw
+    // so E4's sweep can target exact {0,25,50,75,100}% levels instead of
+    // whatever the sim's natural (currently: always-recycled) attacker
+    // identity behaviour produces.
+    if (!edcf_bc_last_seen_init) {
+        for (int _i = 0; _i < 300; _i++) edcf_bc_last_seen[_i] = -1e9;
+        edcf_bc_last_seen_init = true;
+    }
+    if (is_atk) {
+        edcf_atk_events_p++;
+        bool _novel = true;
+        if (node_id < 300) {
+            double _last = edcf_bc_last_seen[node_id];
+            _novel = (_last < -1e8) || ((sim_ts - _last) > edcf_t_mem);
+        }
+        if (edcf_rho_novelty >= 0.0)
+            _novel = ((double)std::rand() / (double)RAND_MAX) < edcf_rho_novelty;
+        if (_novel) edcf_novelty_events_p++;
+    }
+    if (node_id < 300) edcf_bc_last_seen[node_id] = sim_ts;
+
     // ── Blockchain Eq 3.18 — log HMAC failure as separate block
     // Only log when HMAC fails (attack detected by HMAC) — keeps log clean
     if(!hmac_ok){
@@ -141022,10 +142382,14 @@ static void edcf_on_packet(uint32_t node_id,
         if(pkt_type=="BEACON"&&!is_atk){
             edcf_bcn_total++;edcf_bcn_total_p++;edcf_wifi_legit++;edcf_wifi_legit_p++;
             if(_is_veh) edcf_bcn_per_node[_vi]++;   // r_i(t)
+            if(_is_veh && edcf_bcn_ts_cnt[_vi] < EDCF_BCN_TS_BUF)
+                edcf_bcn_ts[_vi][edcf_bcn_ts_cnt[_vi]++] = Simulator::Now().GetSeconds();
         }
         if(pkt_type=="FAKE_BEACON"){
             edcf_bcn_total++;edcf_bcn_total_p++;edcf_bcn_novel++;edcf_bcn_novel_p++;edcf_wifi_flood++;edcf_wifi_flood_p++;
             if(_is_veh) edcf_bcn_per_node[_vi]++;   // attackers also emit beacons
+            if(_is_veh && edcf_bcn_ts_cnt[_vi] < EDCF_BCN_TS_BUF)
+                edcf_bcn_ts[_vi][edcf_bcn_ts_cnt[_vi]++] = Simulator::Now().GetSeconds();
         }
         if(pkt_type=="FLOWMOD"||pkt_type=="WRONG_FM"){
             edcf_fm_cnt++;edcf_fm_cnt_p++;
@@ -141064,28 +142428,86 @@ static void edcf_on_packet(uint32_t node_id,
         // regardless of is_atk -- only the vote VALUE differs, matching
         // the report's claim that mitigation here is credential-blind.
         bool v2_confirmed = edcf_v2_homomorphic_mitigation(node_id, /*is_genuine_vote=*/pkt_type=="ALERT");
-        (void)v2_confirmed;   // available to gate downstream rebroadcast/detection wiring
+        // FIX (Algorithm 3, §3.5.1): previously discarded — the rebroadcast
+        // was never actually gated on this, so V2 always experienced the
+        // full unmitigated cascade regardless of what the Paillier
+        // threshold check decided. g_v2_last_confirmed lets
+        // edcf_inject_v2_alert() (below) suppress the cascade hop when the
+        // neighbourhood-window threshold isn't met, matching Algorithm 3
+        // line 16 ("Suppress rebroadcast").
+        g_v2_last_confirmed = v2_confirmed;
     }
     if(pkt_type=="CASCADE"){edcf_alert_out++;edcf_alert_out_p++;edcf_wifi_flood++;edcf_wifi_flood_p++;}
     if(pkt_type=="RECOMPUTE"){
         edcf_recomp++;edcf_recomp_p++;
-        // Update running mean/variance of λ^CP for Eq 3.14 Term 3
-        edcf_update_cp_load((double)edcf_recomp_p);
+        // λ^CP baseline (edcf_cp_mean/M2/n) is now sampled once per PEM
+        // cycle with that cycle's FINAL recomp_p total (see the per-cycle
+        // reset block), not here per-packet — sampling here fed the
+        // Welford tracker a mid-cycle, still-growing value every time a
+        // RECOMPUTE packet arrived, which mixed "how far into the cycle we
+        // are" into the variance estimate.
         pem_record_table_miss();
     }
     if(pkt_type=="WRONG_TOPO"){
         pem_record_v3_unmitig_topo(); // M3: before detection filter
         edcf_wtopo++;edcf_wtopo_p++;pem_record_topology(edcf_wtopo,N_Vehicles);
+        int _vi3w = (int)node_id - EDCF_VEHICLE_BASE;
+        if(_vi3w >= 0 && _vi3w < 210) edcf_wtopo_per_node[_vi3w]++;
     }
     if(pkt_type=="FAKE_TRACE"){edcf_posjump++;edcf_posjump_p++;}
 
     // Signature score
     double phi=0.0; int var=0;
-    if(edcf_scenario=="v1a"||edcf_scenario=="v1b"){phi=edcf_phi_v1();var=1;}
-    else if(edcf_scenario=="v2a"||edcf_scenario=="v2b"){phi=edcf_phi_v2();var=2;}
+    if(edcf_scenario=="v1a"||edcf_scenario=="v1b"){phi=edcf_phi_v1(node_id);var=1;}
+    else if(edcf_scenario=="v2a"||edcf_scenario=="v2b"){
+        // Φ^V2 (Eq 3.14) is defined over the alert-cascade attack surface --
+        // fan-out ratio, inter-ALERT interval regularity, and the recompute
+        // load those alerts trigger. It was previously evaluated for EVERY
+        // packet type including plain BEACON traffic: once the attacker's
+        // regular 0.5s FAKE_ALERT cadence tripped Term 2 (ψ, after ~3
+        // injections), the resulting network-wide sig_flag stayed latched
+        // true for the rest of the cycle and got applied to every
+        // subsequent BEACON packet too -- the actual cause of the V2a
+        // FP=1110 saturation (Term 1 is structurally ~1.0 for everyone by
+        // construction of edcf_v2_cascade_hop(), which increments A_in/A_out
+        // together for every neighbour, and never drove this). Gating Φ^V2
+        // to only the alert-cascade packet types restores it to its defined
+        // domain: BEACON packets fall back to HMAC-only classification
+        // (matching every other scenario), while every attacker packet
+        // (FAKE_ALERT/CASCADE/RECOMPUTE -- the only sources of alert-class
+        // traffic in this simulation; see edcf_inject_v2_alert()) is still
+        // fully scored.
+        if(pkt_type=="ALERT"||pkt_type=="FAKE_ALERT"||pkt_type=="CASCADE"||pkt_type=="RECOMPUTE")
+            phi=edcf_phi_v2();
+        var=2;
+    }
     else{phi=edcf_phi_v3(node_id,px,py);var=3;}
     double theta=(var==1)?EDCF_THETA_V1:(var==2)?EDCF_THETA_V2:EDCF_THETA_V3;
     bool sig_flag=(phi>=theta);
+
+    // ── Per-attacker φ^V3 diagnostic log (V3 scenarios only) ─────────
+    // Logs the REAL per-packet phi that actually drives sig_flag/TP-FN
+    // for every attacker packet, so the dead-reckoning-convergence
+    // theory (ζ shrinks as edcf_last_vx/vy stabilizes for a constant-
+    // velocity spoofer, weakening detection over time) can be checked
+    // directly instead of inferred from the network-level average.
+    if(var==3 && is_atk){
+        static const std::string _phi_log_path = "./scratch/edcf_v3_attacker_phi_log.csv";
+        bool _need_hdr = !pem_file_exists(_phi_log_path);
+        std::fstream _fphi(_phi_log_path, std::ios::out | std::ios::app);
+        if(_fphi.is_open()){
+            if(_need_hdr)
+                _fphi << "scenario,atk_count,cycle,time_s,node_id,phi,theta,"
+                         "sig_flag,hmac_ok,zeta\n";
+            double _zeta_now = edcf_compute_zeta_for_node(node_id, sim_ts, px, py);
+            _fphi << std::fixed << std::setprecision(6)
+                  << edcf_scenario << "," << edcf_atk_count << ","
+                  << edcf_cycle << "," << sim_ts << ","
+                  << node_id << "," << phi << "," << theta << ","
+                  << (sig_flag?1:0) << "," << (hmac_ok?1:0) << ","
+                  << _zeta_now << "\n";
+        }
+    }
 
     // Run all 4 detectors
     edcf_classify(node_id,is_atk,msg,hmac_ok,sig_flag,var,
@@ -141126,6 +142548,42 @@ static void edcf_on_packet(uint32_t node_id,
                                  ctrl_id_str, sim_ts);
         }
 
+        // ── Mode selector M ∈ {0,1} (§3.4.5, Fig 3.6) ──────────────
+        // A single dispatch: each event is evaluated by EXACTLY ONE of
+        // Full Mode (Algorithm 4, TGNN+LLM fused AI) or Lightweight Mode
+        // (Algorithm 1, rule-based signature + HMAC), never both — matching
+        // the report's C_{M=0} << C_{M=1} cost model, which assumes an
+        // event pays one cost, not the sum of both. Previously both blocks
+        // ran unconditionally for every is_atk candidate.
+        if (edcf_full_mode) {
+        // ── Full Mode (M=1) — Algorithm 4 TD / Eq 3.72 ────────────
+        // Per the report: "Detection layer: TGNN (primary, all variants),
+        // rule-based signatures (secondary, fast pre-filter)". The fused
+        // confidence C_i(t) = mu*s_TGNN + (1-mu)*p_LLM, thresholded at
+        // gamma_v, is its OWN independent detector — it must NOT be gated
+        // behind sig_flag/hmac_ok (that gate belongs only to the separate
+        // Lightweight-Mode/Algorithm-1 rule-based path). Querying here, on
+        // every is_atk candidate reached while M=1, is what lets the AI
+        // actually catch cases the rule-based Phi/zeta filter misses (e.g.
+        // V3 constant-velocity VALID_KEY spoofers where zeta==0 and
+        // sig_flag never fires) — previously this call was nested inside
+        // the sig_flag-gated block below, so the AI was silently
+        // unreachable for exactly the packets it exists to catch.
+        {
+            double _t_det = Simulator::Now().GetSeconds();
+            const double _bc_overhead = 0.003; // 3×FALCON-1024 sign + async HTTP to BC API (measured cost, unrelated to AI inference)
+            if (is_atk && edcf_ai_should_query(node_id, edcf_cycle)) {
+                AiMitigationResult ai = ai_request_mitigation(node_id, sim_ts);
+                if (ai.valid && ai.drop) {
+                    Simulator::Schedule(Seconds(ai.ai_delay + _bc_overhead),
+                                         &edcf_apply_ai_mitigation, node_id, _t_det);
+                }
+                // ai.valid==false (server unreachable) → no drop scheduled,
+                // no EML sample recorded — nothing to fake in its absence.
+            }
+        }
+        } else {
+        // ── Lightweight Mode (M=0) — Algorithm 1 RD ───────────────
         // Eq 3.25 — controller write requires ceil(|R^P(t)|/2)+1 = 3 RSU
         //           peer co-signatures (with |R^P(t)|=4 active peers).
         // FIX: previously generated only 2 signatures (rsu_a, rsu_b), which
@@ -141167,12 +142625,6 @@ static void edcf_on_packet(uint32_t node_id,
                           << "[EDCF-FALCON] Controller-write co-signature #" << g_falcon_ctrl_cosig_count
                           << ": node=" << node_id << " RSUs={" << rsu_a << "," << rsu_b << "," << rsu_c << "}\n";
             }
-            // ── M5 EML: TRUSTED path latency (detect→rule install) ──
-            {
-                double _t_det = Simulator::Now().GetSeconds();
-                // ~3ms: 3×FALCON-1024 sign + async HTTP to BC API
-                pem_record_mitigation_ext(_t_det, _t_det + 0.003, "TRUSTED");
-            }
             // ── M9 BLP: multisig latency, |R^P(t)|=4 active peers ──
             pem_record_blp_multisig(0.003, 4u);
             // ── M4 CDR: legitimate ctrl-plane drop message delivered ─
@@ -141185,6 +142637,7 @@ static void edcf_on_packet(uint32_t node_id,
                 real_sig3
             );
         }
+        } // end else (Lightweight Mode, M=0)
     }
 
     // HMAC log
@@ -141213,20 +142666,31 @@ static void edcf_on_packet(uint32_t node_id,
 static void edcf_pem_write()
 {
     edcf_cycle++;
+
+    // TTL fix: m_blockedNodes previously accumulated forever (no .erase/
+    // .clear() anywhere), so a single misclassification permanently
+    // blacklisted a node — every later packet from it, benign or not,
+    // was silently dropped by Rx()'s firewall check and counted as FP,
+    // which is what produced the monotonic FP saturation from Cycle 3
+    // onward in V2a. Clearing at the start of each new PEM cycle forces
+    // the AI/lightweight detectors to re-evaluate every node fresh each
+    // cycle instead of latching a single early false trigger forever.
+    m_blockedNodes.clear();
+
     double t=Simulator::Now().GetSeconds();
     double atk_pct=100.0*edcf_atk_count/(double)(N_Vehicles+N_RSUs+4);  // % of attackable nodes (veh+RSU+ctrl), report def
 
     // key_type  = the METHOD's own cryptographic mechanism
     // atk_key_type = the attack scenario's key/privilege level
     //   EXTERNAL        — attacker has no valid network key (wrong HMAC)
-    //   STOLEN_KEY      — attacker has stolen valid HMAC key (edcf_has_key=1)
+    //   VALID_KEY       — attacker has stolen valid HMAC key (edcf_has_key=1)
     //   COMPROMISED_CTRL— attacker IS a controller (b-scenarios)
     bool is_b_scenario = (edcf_scenario=="v1b"||edcf_scenario=="v2b"||edcf_scenario=="v3b");
     std::string atk_key_type;
     if(is_b_scenario)
         atk_key_type = "COMPROMISED_CTRL";
     else
-        atk_key_type = (edcf_has_key==1) ? "STOLEN_KEY" : "EXTERNAL";
+        atk_key_type = (edcf_has_key==1) ? "VALID_KEY" : "EXTERNAL";
     // EDCF-Shield uses HMAC-SHA-512 per beacon + FALCON-1024 per RSU→BC tx
     // + AES-256-GCM for LKH key wraps + 4-of-7 Shamir DKG for controllers
     const std::string edcf_key_type = "FALCON1024+HMAC-SHA512+AES256GCM+DKG4of7";
@@ -141402,11 +142866,39 @@ static void edcf_pem_write()
     // ── Blockchain: refresh reputation cache — Eq 3.45 ───────
     bc_refresh_reputation();
 
+    // ── Algorithm 2 (SCM) enforcement — vehicle RevokeFlow path ──────
+    // bc_is_isolated() (Eq 3.24/eq:isolate) was already computing genuine
+    // isolation state above -- it already correctly drives LKH
+    // rekey-on-isolation (bc_refresh_reputation()) -- but nothing ever
+    // acted on it for packet delivery: Algorithm 2's "For each entity e:
+    // if isolated, I <- I U {e}" -> RevokeFlow(e) step was dead code.
+    // Mirrors that loop directly for vehicles: any node the blockchain
+    // currently reports isolated is added to the same firewall blacklist
+    // edcf_apply_ai_mitigation() already uses, so Rx() (~line 119980)
+    // starts dropping its packets. Mode-independent by design --
+    // isolation is a blockchain-side consequence of reputation decay
+    // (Eq 3.33), not an M=0/M=1 AI decision -- runs regardless of
+    // edcf_full_mode and does not touch edcf_classify()'s TP/TN/FP/FN.
+    // Scope: vehicle RevokeFlow only. Controller isolation's failover/
+    // domain-handover sub-procedure (Eq eq:failover/eq:domain_handover)
+    // is a separate, larger piece of Algorithm 2 not covered here.
+    for (uint32_t _vi = 0; _vi < N_Vehicles; _vi++) {
+        uint32_t _vid = (uint32_t)EDCF_VEHICLE_BASE + _vi;
+        if (bc_is_isolated(_vid))
+            m_blockedNodes.insert(std::to_string(_vid));
+    }
+
     // ── R7: commit Merkle batch for this PEM window — Eq merkle_batch
     // All vehicle Tx hashes accumulated this window are committed
     // on-chain as a single MerkleRoot, reducing write rate while
     // preserving full auditability via inclusion proofs.
-    {
+    // Gated by T_b (edcf_merkle_batch_window) independently of the fixed
+    // 2.0s PEM/detection cycle above -- this only changes how often the
+    // ledger commit fires (throughput/latency), never edcf_classify()'s
+    // TP/TN/FP/FN, which are computed every cycle regardless.
+    static double s_last_merkle_commit_t = -1e9;
+    if (t - s_last_merkle_commit_t >= edcf_merkle_batch_window) {
+        s_last_merkle_commit_t = t;
         std::ostringstream batch_body;
         batch_body << "{\"window_id\":" << edcf_cycle << "}";
         bc_async_post(BC_API_BASE + "/batch/commit", batch_body.str());
@@ -141429,18 +142921,71 @@ static void edcf_pem_write()
     // ── M7 MCR: bucket current-cycle MCC by η_c ─────────────
     pem_record_mcr_from_counters(e_mcc2);
 
+    // Sample this cycle's FINAL recomp_p total into the λ^CP Welford
+    // baseline (edcf_cp_mean/M2/n) exactly once, before it's reset below —
+    // gives edcf_phi_v2()'s Term 3 a genuine per-cycle historical baseline
+    // to compare edcf_recomp_p against, instead of growing forever.
+    edcf_update_cp_load((double)edcf_recomp_p);
+
+    // Task 1.1: sample this cycle's FINAL per-vehicle edcf_tm_per_node[]
+    // totals into the per-vehicle table-miss Welford baseline
+    // (edcf_tm_mean/M2/n), exactly once, before it's reset below — same
+    // timing/pattern as edcf_update_cp_load() above, gives
+    // edcf_phi_v1()'s Term 3 (edcf_robust_v1_tm_zscore()) a genuine
+    // historical per-vehicle baseline instead of a flat threshold.
+    edcf_update_tm_baseline();
+
+    // ── E4 rho_novelty(t) — Eq 4.1/eq:novelty_frac ────────────────────
+    // rho_novelty(t) = |{e in A(t): s_e^BC(t)=empty}| / |A(t)|, measured
+    // this cycle from edcf_novelty_events_p/edcf_atk_events_p (accumulated
+    // live in edcf_on_packet() off real blockchain-submission timestamps,
+    // see edcf_bc_last_seen[]). Logged BEFORE the reset below so this row
+    // reflects THIS cycle, not the next one. Separate small log file
+    // (not the shared write_csv_row()/CSV_HDR path) so E4 sweep data
+    // can't perturb any existing CSV column layout/index.
+    {
+        static bool _need_hdr_nov = !pem_file_exists("./scratch/edcf_novelty_frac_log.csv");
+        std::fstream _fnov("./scratch/edcf_novelty_frac_log.csv", std::ios::out | std::ios::app);
+        if (_fnov.is_open()) {
+            if (_need_hdr_nov) {
+                _fnov << "scenario,atk_count,cycle,time_s,t_mem,rho_novelty_override,"
+                         "atk_events,novel_events,rho_novelty\n";
+                _need_hdr_nov = false;
+            }
+            double _rho_nov = (edcf_atk_events_p > 0)
+                ? (double)edcf_novelty_events_p / edcf_atk_events_p : 0.0;
+            _fnov << std::fixed << std::setprecision(6)
+                  << edcf_scenario << "," << edcf_atk_count << "," << edcf_cycle << ","
+                  << t << "," << edcf_t_mem << "," << edcf_rho_novelty << ","
+                  << edcf_atk_events_p << "," << edcf_novelty_events_p << ","
+                  << _rho_nov << "\n";
+        }
+    }
+
     // Reset per-cycle counters
     e_TP_p=e_TN_p=e_FP_p=e_FN_p=0;
     a_TP_p=a_TN_p=a_FP_p=a_FN_p=0;
     edcf_bcn_total_p=edcf_bcn_novel_p=0;
+    edcf_novelty_events_p=edcf_atk_events_p=0;
     edcf_fm_cnt_p=edcf_alert_in_p=edcf_alert_out_p=0;
+    std::fill(std::begin(edcf_tm_per_node), std::end(edcf_tm_per_node), 0u);
+    edcf_ext_fake_mac_count_p = 0; // Category A4 diagnostic: reset per PEM cycle
     edcf_recomp_p=edcf_posjump_p=edcf_wtopo_p=0;
     edcf_wifi_flood_p=edcf_wifi_legit_p=0;
+    // Tier 2 Bug 1 fix: mark the start of the new window so
+    // edcf_poisson_v1_score() can scale mu to elapsed time within it.
+    edcf_v1_window_start_t = Simulator::Now().GetSeconds();
+    // Tier 2 Bug 3 fix (Sir 2026-07-28): freeze this now-COMPLETE window's
+    // per-vehicle beacon counts for Stage 2's valid-key attribution, BEFORE
+    // the memset below zeroes edcf_bcn_per_node[] for the next window.
+    memcpy(edcf_bcn_final_count, edcf_bcn_per_node, sizeof(edcf_bcn_per_node));
     // Reset per-node TGNN feature counters
     memset(edcf_bcn_per_node,      0, sizeof(edcf_bcn_per_node));
+    memset(edcf_bcn_ts_cnt,        0, sizeof(edcf_bcn_ts_cnt)); // Sir diagnostic beta_i window reset
     memset(edcf_alert_out_per_node, 0, sizeof(edcf_alert_out_per_node));
     memset(edcf_alert_in_per_node,  0, sizeof(edcf_alert_in_per_node));
     memset(edcf_fm_per_node,         0, sizeof(edcf_fm_per_node));
+    memset(edcf_wtopo_per_node,      0, sizeof(edcf_wtopo_per_node));
     memset(edcf_hmac_fail_per_node,  0, sizeof(edcf_hmac_fail_per_node));
     memset(edcf_detected_per_node,   0, sizeof(edcf_detected_per_node));
 }
@@ -141448,10 +142993,72 @@ static void edcf_pem_write()
 // ============================================================
 // ATTACK INJECTORS
 // ============================================================
+// AI/SDN firewall demo support: edcf_on_packet() (and the cascade-hop
+// accounting below) only ever updated in-memory counters and CSV evidence
+// rows -- no ns-3 Packet was actually transmitted, so the SDN firewall check
+// wired into Rx() (the MonitorSnifferRx sniffer, see Config::ConnectFailSafe
+// on ".../Phy/MonitorSnifferRx") had nothing real to intercept once a node
+// was blacklisted. This sends an actual tagged WAVE broadcast packet from
+// the attacker's WifiNetDevice, reusing the same CustomDataTag + broadcast
+// mechanism as dsrc_data_broadcast(), so a blacklisted attacker's flood is
+// genuinely received (and dropped/logged) by every node's Rx() sniffer that
+// hears it over the air.
+static void edcf_broadcast_flood_packet(uint32_t atk_id)
+{
+    if (atk_id < (uint32_t)EDCF_VEHICLE_BASE) return;
+    uint32_t v_idx = atk_id - (uint32_t)EDCF_VEHICLE_BASE;
+    if (v_idx >= (uint32_t)N_Vehicles) return;
+
+    Ptr<NetDevice> nd = wifidevices.Get(v_idx);
+    Ptr<WifiNetDevice> wdi = DynamicCast<WifiNetDevice>(nd);
+    if (!wdi) return;
+
+    Vector pos(0,0,0);
+    Ptr<Node> atk_node = dsrc_Nodes.Get(v_idx);
+    Ptr<MobilityModel> mob = atk_node->GetObject<MobilityModel>();
+    if (mob) pos = mob->GetPosition();
+
+    CustomDataTag tag;
+    tag.SetNodeId(atk_id);
+    tag.SetPosition(pos);
+    tag.SetVelocity(Vector(0,0,0));
+    tag.SetAcceleration(Vector(0,0,0));
+    tag.SetTimestamp(Simulator::Now());
+
+    Ptr<Packet> packet_i = Create<Packet>(0);
+    packet_i->AddPacketTag(tag);
+
+    Mac48Address dest = Mac48Address::GetBroadcast();
+    uint16_t protocolwave = 0x88dc; // WAVE ethertype, matches dsrc_data_broadcast()
+    Simulator::Schedule(Seconds(0), &WifiNetDevice::Send, wdi, packet_i, dest, protocolwave);
+}
+
 static void edcf_inject_v1_beacon(uint32_t atk_id)
 {
     edcf_on_packet(atk_id,"FAKE_BEACON",100.0*(atk_id+1),100.0*(atk_id+1));
+    edcf_broadcast_flood_packet(atk_id);
     pem_record_table_miss();
+    {
+        int _vi_tm = (int)atk_id - EDCF_VEHICLE_BASE;
+        if(_vi_tm>=0 && _vi_tm<210) edcf_tm_per_node[_vi_tm]++;
+
+        // Category A1 (Sir 2026-07-27 v3): external attacker (edcf_has_key==0)
+        // rotates a fresh, previously-unseen fake MAC on every beacon --
+        // "0xDEAD<k>000001, incrementing by 1 per beacon" per spec -- matching
+        // the paper's "unknown beacons force packets to controller" mechanism.
+        // Diagnostic-only for now (Tier 1): counts toward the network-level
+        // fake-identity observation so we can verify rho_new_identity WOULD
+        // fire correctly once D2 (Tier 2) restores the identity-novelty
+        // formula. Does not yet change edcf_phi_v1()'s live Term 2/3 --
+        // ground-truth attribution still goes through the existing
+        // edcf_tm_per_node[_vi_tm] real-vehicle counter above, unchanged.
+        // Valid-key attacker (edcf_has_key==1) is unchanged: keeps its own
+        // real node_id, no fake MAC involved (Sir's A2 -- no change needed).
+        if(edcf_has_key==0 && _vi_tm>=0 && _vi_tm<210){
+            edcf_ext_fake_mac_next[_vi_tm]++;
+            edcf_ext_fake_mac_count_p++;
+        }
+    }
     if(Simulator::Now().GetSeconds()<simTime-1.0)
         Simulator::Schedule(Seconds(0.1),&edcf_inject_v1_beacon,atk_id);
 }
@@ -141512,28 +143119,78 @@ static void edcf_v2_cascade_hop(uint32_t src_id)
             edcf_alert_out_per_node[i]++;
         }
         edcf_alert_out++; edcf_alert_out_p++;
+
+        // V2-1 fix (Sir 2026-07-27 Tier 1): the paper's mechanism is
+        // "attacker sends fake alert -> neighbours receive and rebroadcast
+        // -> EACH RELAYING VEHICLE sends a route recomputation request to
+        // the controller -> controller issues FlowMod back". Previously
+        // this function only updated the alert_in/alert_out fan-out
+        // counters -- no relaying neighbour's rebroadcast actually reached
+        // the controller, so cascade depth never amplified controller load
+        // (lambda^CP), only the fan-out ratio. Each relay now contributes
+        // one recompute event + one table-miss at the controller, matching
+        // what a "RECOMPUTE" packet already does inside edcf_on_packet() --
+        // done directly here (not via the full edcf_on_packet() pipeline)
+        // to avoid running HMAC/blockchain/classification for every one of
+        // potentially dozens of relaying neighbours per hop, which would
+        // inflate TP/TN/FP/FN with classification decisions attributed to
+        // vehicles that never actually originate a signature-scored packet.
+        edcf_recomp++; edcf_recomp_p++;
+        pem_record_table_miss();
     }
 }
 
 static void edcf_inject_v2_alert(uint32_t atk_id)
 {
     // ── Attacker injects FAKE_ALERT (Eq gsign + paillier_enc) ────────
+    // Sets g_v2_last_confirmed via edcf_v2_homomorphic_mitigation() inside
+    // edcf_on_packet() — the neighbourhood-window Paillier threshold
+    // verdict (Algorithm 3) for THIS alert.
     pem_record_v2_unmitig_alert();  // M3: before HE suppression
     edcf_on_packet(atk_id,"FAKE_ALERT",50.0,50.0);
     pem_record_alert(atk_id,1,1);
-    // ── Attacker rebroadcasts as CASCADE ──────────────────────────────
-    pem_record_v2_unmitig_alert();  // M3: cascade count unmitigated
-    edcf_on_packet(atk_id,"CASCADE",50.0,50.0);
-    pem_record_alert(atk_id,2,3);
     // ── Forged route recomputation request (C2C Eq ctrl_feat) ─────────
+    // The attacker's own forged request, not a rebroadcast — always sent,
+    // matching how the original injected packet itself isn't suppressible
+    // (only the cascade it would otherwise trigger downstream is).
     edcf_on_packet(atk_id,"RECOMPUTE",0.0,0.0);
-    // ── Cascade propagation to neighbours (Eq v2_fanout / Gamma) ──────
-    // Simulates benign vehicles within 270m receiving and relaying the
-    // alert — makes per-node A_i^in, A_i^out realistic for TGNN and
-    // makes Gamma (Eq v2_metric) reflect true amplification depth.
-    edcf_v2_cascade_hop(atk_id);
+    // ── Real over-the-air broadcast so the SDN firewall (Rx()) has an
+    // actual flood packet to intercept once this attacker is blacklisted.
+    edcf_broadcast_flood_packet(atk_id);
+    // M3 unmitigated-baseline counter: always increments regardless of
+    // whether the cascade actually happens below — it exists specifically
+    // to measure what WOULD have occurred without mitigation, so gating it
+    // would defeat its own purpose (no baseline left to compare against).
+    pem_record_v2_unmitig_alert();  // M3: cascade count unmitigated
+    // FIX (Algorithm 3 line 16, §3.5.1): "Suppress rebroadcast" when the
+    // Paillier-encrypted neighbourhood vote count doesn't clear the
+    // density-normalised threshold (Eq 3.55/3.59). Previously the cascade
+    // rebroadcast below ran unconditionally regardless of this check —
+    // g_v2_last_confirmed was computed correctly by
+    // edcf_v2_homomorphic_mitigation() but discarded, so V2 always
+    // experienced the full unmitigated cascade. Now gated for real.
+    if (g_v2_last_confirmed) {
+        // ── Attacker rebroadcasts as CASCADE ──────────────────────────
+        edcf_on_packet(atk_id,"CASCADE",50.0,50.0);
+        pem_record_alert(atk_id,2,3);
+        // ── Cascade propagation to neighbours (Eq v2_fanout / Gamma) ───
+        // Simulates benign vehicles within 270m receiving and relaying the
+        // alert — makes per-node A_i^in, A_i^out realistic for TGNN and
+        // makes Gamma (Eq v2_metric) reflect true amplification depth.
+        edcf_v2_cascade_hop(atk_id);
+    }
+    // V2-3 fix (Sir 2026-07-27 Tier 1): inter-alert period must be FIXED
+    // (not random) for ψ (inter-alert interval variance, Eq v2 Term 2) to
+    // stay low/regular and discriminate from benign — this was already
+    // deterministic (0.5s, not random), so that requirement was technically
+    // met. But Category C documents the intended parameter as "one alert
+    // per 2-3s", and the settings table must match what's actually
+    // simulated — 0.5s (2/sec) doesn't match that. Changed to 2.5s
+    // (midpoint of the documented 2-3s range) so the implementation and
+    // the paper's stated parameter agree.
+    static const double EDCF_V2_ALERT_PERIOD = 2.5;
     if(Simulator::Now().GetSeconds()<simTime-1.0)
-        Simulator::Schedule(Seconds(0.5),&edcf_inject_v2_alert,atk_id);
+        Simulator::Schedule(Seconds(EDCF_V2_ALERT_PERIOD),&edcf_inject_v2_alert,atk_id);
 }
 static void edcf_inject_v3_trace(uint32_t atk_id)
 {
@@ -141550,30 +143207,51 @@ static void edcf_inject_v3_trace(uint32_t atk_id)
     double fy = (atk_id<203) ? edcf_v3_fake_y[atk_id] : 0.0;
     edcf_on_packet(atk_id,"FAKE_TRACE",fx,fy);
     edcf_on_packet(atk_id,"WRONG_TOPO",fx,fy);
+    edcf_broadcast_flood_packet(atk_id);
     pem_record_topology(edcf_wtopo,N_Vehicles);
     pem_record_attack_flowmod();
     if(Simulator::Now().GetSeconds()<simTime-1.0)
         Simulator::Schedule(Seconds(0.3),&edcf_inject_v3_trace,atk_id);
 }
-static void edcf_inject_legit_beacons()
+// EDCF_T_B now declared earlier (near EDCF_ALPHA1) so edcf_poisson_v1_score()
+// can use it; still the same 5 Hz legitimate beacon period.
+
+// Category A1 (Sir 2026-07-27 fix): per-vehicle independent beacon timer.
+// Replaces the old shared-timer edcf_inject_legit_beacons() (removed),
+// which fired for all 200 vehicles simultaneously every 0.2s -- physically
+// impossible in DSRC, and the confirmed root cause of the degenerate
+// zero-variance benign beacon-rate (Task 1.4: MAD_r=0) and beacon-interval
+// (beta_i diagnostic: 100% of benign vehicle-windows exactly 0.0)
+// distributions: every vehicle got the identical count/spacing every
+// window by construction, so no threshold could ever have separated
+// benign from attacker on this indicator. Each vehicle now runs its own
+// independent recurring T_b timer; edcf_inject_legit_beacons_start()
+// below gives each one a random first-fire offset in [0, T_b) so they
+// are never in lockstep with each other.
+static void edcf_inject_legit_beacon_for_vehicle(uint32_t node_id)
 {
-    // Legitimate vehicles start at node EDCF_VEHICLE_BASE (=5: 4 ctrl + 1 mgmt)
-    //uint32_t ls = EDCF_VEHICLE_BASE + edcf_atk_count;
-    //uint32_t le = ls + 8;
-   // if(le > (uint32_t)(EDCF_VEHICLE_BASE + N_Vehicles))
-        //le = EDCF_VEHICLE_BASE + N_Vehicles;
-   // for(uint32_t i = ls; i < le; i++)
-       // edcf_on_packet(i, "BEACON", 10.0*(i - EDCF_VEHICLE_BASE), 10.0*(i - EDCF_VEHICLE_BASE));
-	uint32_t ls = EDCF_VEHICLE_BASE + edcf_atk_count;
-    uint32_t le = EDCF_VEHICLE_BASE + N_Vehicles;
-    for(uint32_t i = ls; i < le; i++){
-        uint32_t v_idx = i - EDCF_VEHICLE_BASE;
-        double px = 20.0 * (double)(v_idx % 20);  // 0..380 m
-        double py = 20.0 * (double)(v_idx / 20);  // 0..180 m
-        edcf_on_packet(i, "BEACON", px, py);
-    }
+    uint32_t v_idx = node_id - EDCF_VEHICLE_BASE;
+    double px = 20.0 * (double)(v_idx % 20);  // 0..380 m
+    double py = 20.0 * (double)(v_idx / 20);  // 0..180 m
+    edcf_on_packet(node_id, "BEACON", px, py);
     if(Simulator::Now().GetSeconds() < simTime - 1.0)
-        Simulator::Schedule(Seconds(0.2), &edcf_inject_legit_beacons);
+        Simulator::Schedule(Seconds(EDCF_T_B), &edcf_inject_legit_beacon_for_vehicle, node_id);
+}
+
+// Schedules each benign vehicle's independent first beacon at a random
+// offset drawn uniformly from [0, T_b) -- replaces the single
+// Simulator::Schedule(Seconds(0.1), &edcf_inject_legit_beacons) call site.
+static void edcf_inject_legit_beacons_start()
+{
+    uint32_t ls = EDCF_VEHICLE_BASE + edcf_atk_count;
+    uint32_t le = EDCF_VEHICLE_BASE + N_Vehicles;
+    Ptr<UniformRandomVariable> rv = CreateObject<UniformRandomVariable>();
+    rv->SetAttribute("Min", DoubleValue(0.0));
+    rv->SetAttribute("Max", DoubleValue(EDCF_T_B));
+    for(uint32_t i = ls; i < le; i++){
+        double offset = rv->GetValue();
+        Simulator::Schedule(Seconds(offset), &edcf_inject_legit_beacon_for_vehicle, i);
+    }
 }
 // PPMDS baseline driver — runs the modified-ElGamal encrypted-feedback round
 // every 0.5 s for ALL variants/sub-scenarios, independent of attacker count,
@@ -141584,6 +143262,32 @@ static void ppmds_drive_round()
     ppmds_round(drive_id, Simulator::Now().GetSeconds());
     if(Simulator::Now().GetSeconds() < simTime-1.0)
         Simulator::Schedule(Seconds(0.5), &ppmds_drive_round);
+}
+
+// AI control-plane mitigation bridge — polls scratch/blacklist.txt, which
+// live_inference.py (Python TGNN+LLM fusion) writes a suspect vehicle Node
+// ID to whenever it fuses a non-benign verdict. Runs every 0.5 s alongside
+// ppmds_drive_round so the SDN firewall reacts on the same cadence as the
+// Python poll loop (POLL_SEC=2.0 there, checked more often here so we don't
+// miss a write between AI cycles).
+static void edcf_check_ai_blacklist()
+{
+    std::ifstream blacklistFile("scratch/blacklist.txt");
+    std::string badNodeId;
+    if (blacklistFile.is_open()) {
+        while (getline(blacklistFile, badNodeId)) {
+            if (!badNodeId.empty()) {
+                NS_LOG_UNCOND("Simulator Time: " << Simulator::Now().GetSeconds() << "s - [SDN FIREWALL] Direct AI intervention. Dropping malicious Node " << badNodeId << " from network.");
+                m_blockedNodes.insert(badNodeId);
+            }
+        }
+        blacklistFile.close();
+        // Clear the file so we don't spam the log every microsecond
+        std::ofstream clearFile("scratch/blacklist.txt", std::ios::trunc);
+        clearFile.close();
+    }
+    if(Simulator::Now().GetSeconds() < simTime-1.0)
+        Simulator::Schedule(Seconds(0.5), &edcf_check_ai_blacklist);
 }
 
 static void edcf_start_attacks()
@@ -141621,6 +143325,9 @@ static void edcf_start_attacks()
     // PPMDS baseline: keygen once, then drive its round independent of attackers
     ppmds_init();
     Simulator::Schedule(Seconds(2.0), &ppmds_drive_round);
+
+    // Start the AI control-plane mitigation bridge (file-drop blacklist poll)
+    Simulator::Schedule(Seconds(2.0), &edcf_check_ai_blacklist);
 
     // Wang [22] baseline: load pre-trained DRL Q-table once at scenario
     // start (idempotent — wang_load_qtable no-ops if already loaded).
@@ -141666,7 +143373,7 @@ static void edcf_start_attacks()
     }
     std::cout<<"[EDCF] Running 4 detectors: EDCF-Shield + Anyanwu[16] + Gyawali[19] + Wang[22]\n";
 
-    Simulator::Schedule(Seconds(0.1),&edcf_inject_legit_beacons);
+    edcf_inject_legit_beacons_start();
     for(double t=2.0;t<simTime;t+=2.0)
         Simulator::Schedule(Seconds(t),&edcf_pem_write);
     Simulator::Schedule(Seconds(simTime-0.5),&edcf_pem_write);
@@ -141675,10 +143382,21 @@ static void edcf_start_attacks()
     // Cap real injection at the number of vehicles: attackers map to vehicle
     // nodes only, so counts above N_Vehicles (e.g. 214,268 at /268 penetration)
     // inject at most N_Vehicles vehicle-attackers. Reported %% uses /268.
+    // Fix (Sir 2026-07-29, V1 Complete/Next Steps): all attacker vehicles now
+    // begin their first injection SIMULTANEOUSLY at t=2.0s (start of cycle 1),
+    // not staggered by index (old: st = 2.0 + i*0.1). The old per-attacker
+    // 0.1s stagger meant high-index attackers at large atk_count (120, 140)
+    // didn't fire their first beacon until t>=12.7s, leaving under 2s of the
+    // 15s simTime to accumulate enough count to clear the Stage 2 right-tail
+    // threshold before the window closed -- confirmed as the root cause of
+    // the persistent FN at AtkCnt=120/140 (a scheduling artifact, not a
+    // detection defect: Stage 2 correctly didn't flag vehicles that hadn't
+    // actually flooded yet). Removing the stagger applies to v1a/v1b, v2a/
+    // v2b, and v3a/v3b alike since they share this loop.
     uint32_t atk_inject = (edcf_atk_count > N_Vehicles) ? N_Vehicles : edcf_atk_count;
     for(uint32_t i=0;i<atk_inject;i++){
         uint32_t atk_id = EDCF_VEHICLE_BASE + i;  // nodes 4,5,6,...
-        double st = 2.0 + i * 0.1;
+        double st = 2.0;
         if(edcf_scenario=="v1a"||edcf_scenario=="v1b")
             Simulator::Schedule(Seconds(st),&edcf_inject_v1_beacon,atk_id);
         else if(edcf_scenario=="v2a"||edcf_scenario=="v2b")
@@ -141733,7 +143451,12 @@ int main(int argc, char *argv[])
     cmd.AddValue("edcf_atk_count", "Number of attacker vehicles", edcf_atk_count);
     cmd.AddValue("edcf_bad_ctrl",  "Which controller is compromised: 0=ctrl0 1=ctrl1 2=ctrl2 (b scenarios only)", edcf_bad_ctrl);
     cmd.AddValue("edcf_has_key",   "Vehicle attacker key: 1=stolen valid key  0=external wrong key (ignored for v_b)", edcf_has_key);
-    cmd.Parse (argc, argv);	
+    cmd.AddValue("edcf_full_mode", "Detection mode selector M (Sec 3.4.5): 0=Lightweight only (rule+HMAC, Algorithm 1), 1=Full only (TGNN+LLM fused AI, Algorithm 4) — mutually exclusive, never both", edcf_full_mode);
+    cmd.AddValue("edcf_t_mem", "T_mem (Eq 4.1/eq:novelty_frac): blockchain-history lookback window in seconds for rho_novelty(t)", edcf_t_mem);
+    cmd.AddValue("edcf_rho_novelty", "E4 sweep override for rho_novelty(t) in [0,1] (Eq 4.1); default -1 = disabled, measure only", edcf_rho_novelty);
+    cmd.AddValue("edcf_theta_v2", "Theta^V2 signature-score detection threshold for edcf_phi_v2() (Sec 3.3.4); default 0.9 -- sensitivity sweep param", EDCF_THETA_V2);
+    cmd.AddValue("edcf_merkle_batch_window", "T_b (Eq merkle_batch): min seconds between Merkle-batch commits to blockchain; default 2.0 matches the fixed PEM cycle cadence and is decoupled from detection-cycle timing (edcf_classify()'s TP/TN/FP/FN are untouched by this parameter)", edcf_merkle_batch_window);
+    cmd.Parse (argc, argv);
     std::cout << "\n========================================================\n"
               << "[EDCF-SETUP] PRE-SIMULATION KEY GENERATION PHASE\n"
               << "[EDCF-SETUP] (runs once, before Simulator::Run() starts --\n"

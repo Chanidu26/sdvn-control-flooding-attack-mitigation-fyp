@@ -43,7 +43,6 @@ const (
 	RSU_QUARANTINE_WIN = 3    // R12: consecutive bad windows before quarantine
 	RSU_REMOVE_TH      = 0.15 // R12: score below this while quarantined → REMOVE
 	RSU_RESTORE_TH     = 0.6  // R12: score above this while quarantined → restore ACTIVE
-	RHO                = 0.80  // Eq 3.23: decay parameter ρ=0.80 per sim settings
 	R_TH               = 0.3
 	N_TH               = 3
 	RCTRL_TH           = 0.5
@@ -57,6 +56,24 @@ const (
 	LEDGER_FILE        = "./edcf_ledger.json"
 	KDF_HMAC_LABEL     = "HMAC-AUTH"
 )
+
+// RHO (Eq 3.23: decay parameter) defaults to 0.80 per sim settings, same as
+// before -- overridable via EDCF_RHO env var for the rep_decay sensitivity
+// sweep without needing a recompile per value. Not a const because init()
+// must be able to assign to it.
+var RHO float64 = 0.80
+
+func init() {
+	if v := os.Getenv("EDCF_RHO"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			log.Printf("[WARN] EDCF_RHO=%q is not a valid float, keeping default RHO=%.2f: %v", v, RHO, err)
+			return
+		}
+		RHO = parsed
+		log.Printf("[INIT] RHO overridden via EDCF_RHO -> %.4f", RHO)
+	}
+}
 
 // R12: RSU peer states
 const (
