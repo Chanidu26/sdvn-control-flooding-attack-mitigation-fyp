@@ -1062,8 +1062,8 @@ def add_scratch_programs(bld):
                 obj.path = obj.path.find_dir('scratch')
                 obj.source = filename
                 obj.lib = ['pbc', 'gmpxx', 'gmp', 'crypto', 'oqs']
-                obj.libpath  = ['/home/kumesha/liboqs-install/lib']
-                obj.rpath    = ['/home/kumesha/liboqs-install/lib']
+                obj.libpath  = ['/usr/local/lib']
+                obj.rpath    = ['/usr/local/lib']
                 obj.target = name
                 obj.name = obj.target
                 obj.install_path = None
