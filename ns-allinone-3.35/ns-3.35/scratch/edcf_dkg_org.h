@@ -32,7 +32,6 @@
 #include <vector>
 #include <array>
 #include <stdexcept>
-#include <iostream>
 
 namespace edcf {
 namespace dkg {
@@ -136,22 +135,11 @@ inline void dkg_accumulate_share(RsuDkgNode& node, const DkgShareMsg& incoming) 
 //  receives. After this call, `nodes[i].combined_share` holds RSU i's true
 //  DKG share of k_root = sum_j a_{j,0}, which is NEVER materialized as a
 //  single value anywhere in this function.
-//
-//  `verbose=true` prints every polynomial-init, share-send, and accumulate
-//  step to stdout prefixed "[EDCF-DKG]", so the live operation trail is
-//  visible in the NS-3 console log (not just a one-line final summary) --
-//  this is what answers "where/how is DKG actually executing" when
-//  reviewing a captured simulation log.
 // ---------------------------------------------------------------------------
-inline std::vector<RsuDkgNode> dkg_run_round(int n = 7, int t = 4, bool verbose = false) {
+inline std::vector<RsuDkgNode> dkg_run_round(int n = 7, int t = 4) {
     std::vector<RsuDkgNode> nodes(n);
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i)
         dkg_init_node(nodes[i], i + 1, t);          // RSU ids are 1-indexed (matches Shamir x-coords)
-        if (verbose)
-            std::cout << "[EDCF-DKG] RSU_" << (i+1)
-                      << " sampled its own random degree-" << (t-1)
-                      << " polynomial f_" << (i+1) << "(x) (Eq 3.42 LHS)\n";
-    }
 
     // All-to-all share exchange. In the live ns-3 simulation this happens
     // in-process (single host), modelling the "RSU1<->RSU2<->RSU3" DKG-share
@@ -161,21 +149,7 @@ inline std::vector<RsuDkgNode> dkg_run_round(int n = 7, int t = 4, bool verbose 
         for (int to = 0; to < n; ++to) {
             DkgShareMsg msg = dkg_make_share(nodes[from], nodes[to].id, t);
             dkg_accumulate_share(nodes[to], msg);
-            if (verbose)
-                std::cout << "[EDCF-DKG] RSU_" << nodes[from].id
-                          << " -> RSU_" << nodes[to].id
-                          << ": sent share s_" << nodes[from].id << nodes[to].id
-                          << " = f_" << nodes[from].id << "(" << nodes[to].id
-                          << ") (Eq 3.42); RSU_" << nodes[to].id
-                          << " accumulated into its combined share sk_r"
-                          << nodes[to].id << " (Eq 3.43)\n";
         }
-    }
-    if (verbose) {
-        std::cout << "[EDCF-DKG] Round complete: " << n << " RSUs, threshold t=" << t
-                  << ". k_root = sum of all RSUs' a_j0 terms is NEVER computed here;\n"
-                  << "[EDCF-DKG] only combined shares sk_r1..sk_r" << n
-                  << " exist. Reconstruction (Eq 3.44) happens separately, only when needed.\n";
     }
     return nodes;
 }
